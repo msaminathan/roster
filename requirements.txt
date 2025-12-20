@@ -3,3 +3,4 @@ mysql-connector-python
 pandas
 Pillow
 pdfplumber
+plotly
