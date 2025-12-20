@@ -7,6 +7,11 @@ import binascii
 import base64
 import plotly.graph_objects as go
 import datetime
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Page Config
 st.set_page_config(page_title="IITM Class of 1971 Roster", layout="wide")
@@ -16,10 +21,10 @@ st.set_page_config(page_title="IITM Class of 1971 Roster", layout="wide")
 def get_db_connection():
     try:
         return mysql.connector.connect(
-            host='64.68.203.166',
-            user='msaminathan_sami',
-            password='Thamu$123',
-            database='msaminathan_ccdb'
+            host=os.getenv('DB_HOST'),
+            user=os.getenv('DB_USER'),
+            password=os.getenv('DB_PASSWORD'),
+            database=os.getenv('DB_NAME')
         )
     except mysql.connector.Error as err:
         return None
