@@ -4,3 +4,4 @@ pandas
 Pillow
 pdfplumber
 plotly
+python-dotenv
