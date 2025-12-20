@@ -5,8 +5,6 @@ from PIL import Image
 import io
 import binascii
 import base64
-import plotly.graph_objects as go
-import datetime
 
 # Page Config
 st.set_page_config(page_title="IITM Class of 1971 Roster", layout="wide")
@@ -128,7 +126,7 @@ selected_branch = st.sidebar.selectbox("Filter by Branch", unique_branches)
 # Sort Options
 sort_option = st.sidebar.selectbox("Sort By", ["Name (A-Z)", "Country, City", "Roll No (Ascending)"])
 
-view_mode = st.sidebar.radio("View Option", ["Grid View", "List View", "Table (Text)", "Table (with Icons)", "Statistics"])
+view_mode = st.sidebar.radio("View Option", ["Grid View", "List View", "Table (Text)", "Table (with Icons)"])
 
 # Filtering
 filtered_df = df.copy()
@@ -376,123 +374,4 @@ else:
             },
             hide_index=True
         )
-
-    elif view_mode == "Statistics":
-        st.header("🎓 Statistics & Pareto Charts")
-
-        def draw_pareto(data, category_col, title):
-            # 1. Aggregate
-            counts = data[category_col].value_counts().reset_index()
-            counts.columns = [category_col, 'count']
-            counts = counts.sort_values(by='count', ascending=False)
-            
-            # 2. Cumulative Percentage
-            counts['cumulative_percentage'] = counts['count'].cumsum() / counts['count'].sum() * 100
-            
-            # 3. Create Plot
-            fig = go.Figure()
-            
-            # Bar Chart (Counts)
-            fig.add_trace(go.Bar(
-                x=counts[category_col],
-                y=counts['count'],
-                name='Count',
-                marker_color='rgb(55, 83, 109)'
-            ))
-            
-            # Line Chart (Cumulative %)
-            fig.add_trace(go.Scatter(
-                x=counts[category_col],
-                y=counts['cumulative_percentage'],
-                name='Cumulative Percentage',
-                yaxis='y2',
-                mode='lines+markers',
-                marker_color='rgb(219, 64, 82)'
-            ))
-            
-            # Layout
-            fig.update_layout(
-                title=title,
-                xaxis_title=category_col,
-                yaxis=dict(title='Count'),
-                yaxis2=dict(
-                    title='Cumulative Percentage',
-                    overlaying='y',
-                    side='right',
-                    range=[0, 110]
-                ),
-                legend=dict(x=0.8, y=1.2),
-                template='plotly_white'
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
-
-        # 1. Graduates by Branch
-        st.subheader("1. Graduates by Branch")
-        if 'branch' in df.columns:
-            draw_pareto(df, 'branch', 'Graduates by Branch')
-        else:
-            st.warning("Branch data not available")
-
-        # 2. Graduates by DOB Month
-        st.subheader("2. Graduates by DOB Month")
-        if 'dob' in df.columns:
-            # Extract Month
-            def get_month(date_str):
-                if not date_str: return None
-                try:
-                    # User requested heuristic: Last 3 letters are the month
-                    # Data format example: "12-Jun"
-                    if len(date_str) >= 3:
-                        return date_str[-3:]
-                except:
-                    pass
-                return None
-
-            df_dob = df.copy()
-            df_dob['dob_month'] = df_dob['dob'].apply(get_month)
-            # Filter our NaNs
-            df_dob = df_dob.dropna(subset=['dob_month'])
-            
-            if not df_dob.empty:
-                draw_pareto(df_dob, 'dob_month', 'Graduates by DOB Month')
-            else:
-                st.info("No valid DOB data found to parse months.")
-
-        # 3. Graduates by WAD Month
-        st.subheader("3. Graduates by WAD Month")
-        if 'wad' in df.columns:
-            df_wad = df.copy()
-            df_wad['wad_month'] = df_wad['wad'].apply(get_month) # Reuse get_month
-            df_wad = df_wad.dropna(subset=['wad_month'])
-            
-            if not df_wad.empty:
-                draw_pareto(df_wad, 'wad_month', 'Graduates by WAD Month')
-            else:
-                st.info("No valid WAD data found to parse months.")
-
-        # 4. Graduates by Location
-        st.subheader("4. Graduates by Location")
-        
-        tab1, tab2, tab3, tab4 = st.tabs(["Lives In", "Country", "State", "Hostel"])
-        
-        with tab1:
-            if 'lives_in' in df.columns:
-                draw_pareto(df, 'lives_in', 'Graduates by City/Lives In')
-        
-        with tab2:
-            if 'country' in df.columns:
-                draw_pareto(df, 'country', 'Graduates by Country')
-            else:
-                st.write("Country column missing")
-
-        with tab3:
-            if 'state' in df.columns:
-                draw_pareto(df, 'state', 'Graduates by State')
-            else:
-                st.write("State column missing")
-                
-        with tab4:
-             if 'hostel' in df.columns:
-                draw_pareto(df, 'hostel', 'Graduates by Hostel')
 
