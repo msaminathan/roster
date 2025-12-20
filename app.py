@@ -128,7 +128,7 @@ selected_branch = st.sidebar.selectbox("Filter by Branch", unique_branches)
 # Sort Options
 sort_option = st.sidebar.selectbox("Sort By", ["Name (A-Z)", "Country, City", "Roll No (Ascending)"])
 
-view_mode = st.sidebar.radio("View Option", ["Grid View", "List View", "Table (Text)", "Table (with Icons)", "Statistics"])
+view_mode = st.sidebar.radio("View Option", ["Grid View", "List View", "Table (Text)", "Table (with Icons)", "Statistics", "Items of Interest", "About this App"])
 
 # Filtering
 filtered_df = df.copy()
@@ -495,4 +495,185 @@ else:
         with tab4:
              if 'hostel' in df.columns:
                 draw_pareto(df, 'hostel', 'Graduates by Hostel')
+
+    elif view_mode == "Items of Interest":
+        st.header("📌 Items of Interest")
+        
+        # --- Helper Functions for Posts ---
+        def get_posts():
+            conn = get_db_connection()
+            if not conn: return pd.DataFrame()
+            try:
+                # Fetch latest first
+                return pd.read_sql("SELECT * FROM posts ORDER BY created_at DESC", conn)
+            except:
+                return pd.DataFrame()
+            finally:
+                conn.close()
+
+        def create_post(roll_no, author_name, title, description, link):
+            conn = get_db_connection()
+            if not conn: return False
+            cursor = conn.cursor()
+            try:
+                sql = "INSERT INTO posts (roll_no, author_name, title, description, link) VALUES (%s, %s, %s, %s, %s)"
+                cursor.execute(sql, (roll_no, author_name, title, description, link))
+                conn.commit()
+                return True
+            except Exception as e:
+                st.error(f"Error creating post: {e}")
+                return False
+            finally:
+                cursor.close()
+                conn.close()
+
+        def update_post_db(post_id, title, description, link):
+            conn = get_db_connection()
+            if not conn: return False
+            cursor = conn.cursor()
+            try:
+                sql = "UPDATE posts SET title=%s, description=%s, link=%s WHERE id=%s"
+                cursor.execute(sql, (title, description, link, post_id))
+                conn.commit()
+                return True
+            except Exception as e:
+                st.error(f"Error updating post: {e}")
+                return False
+            finally:
+                cursor.close()
+                conn.close()
+
+        def delete_post_db(post_id):
+            conn = get_db_connection()
+            if not conn: return False
+            cursor = conn.cursor()
+            try:
+                sql = "DELETE FROM posts WHERE id=%s"
+                cursor.execute(sql, (post_id,))
+                conn.commit()
+                return True
+            except Exception as e:
+                st.error(f"Error deleting post: {e}")
+                return False
+            finally:
+                cursor.close()
+                conn.close()
+
+        # --- Dialogs ---
+        @st.dialog("Add New Item")
+        def add_post_dialog():
+            with st.form("new_post_form"):
+                title = st.text_input("Title", max_chars=255)
+                description = st.text_area("Description")
+                link = st.text_input("Link (Optional)")
+                
+                if st.form_submit_button("Post Item"):
+                    if not title:
+                        st.error("Title is required.")
+                    else:
+                        c_user = st.session_state['user_info']
+                        success = create_post(c_user['roll_no'], c_user['name'], title, description, link)
+                        if success:
+                            st.success("Item posted!")
+                            st.rerun()
+
+        @st.dialog("Edit Item")
+        def edit_post_dialog(post_row):
+            with st.form("edit_post_form"):
+                title = st.text_input("Title", value=post_row['title'], max_chars=255)
+                description = st.text_area("Description", value=post_row['description'])
+                link = st.text_input("Link (Optional)", value=post_row['link'] if post_row['link'] else "")
+                
+                if st.form_submit_button("Save Changes"):
+                    if not title:
+                        st.error("Title is required.")
+                    else:
+                        success = update_post_db(post_row['id'], title, description, link)
+                        if success:
+                            st.success("Item updated!")
+                            st.rerun()
+
+        @st.dialog("Delete Item")
+        def delete_post_dialog(post_id):
+            st.warning("Are you sure you want to delete this item? This cannot be undone.")
+            if st.button("Yes, Delete"):
+                if delete_post_db(post_id):
+                    st.success("Item deleted.")
+                    st.rerun()
+
+        # --- UI Layout ---
+        
+        # 'Add New' Button (Only if logged in - logic ensures this page is mostly reached if logged in, but check safe)
+        if st.session_state.get('logged_in'):
+            if st.button("➕ Post New Item"):
+                add_post_dialog()
+        else:
+            st.info("Please login to post items.")
+
+        st.markdown("---")
+        
+        posts_df = get_posts()
+        
+        if posts_df.empty:
+            st.info("No items posted yet.")
+        else:
+            for idx, row in posts_df.iterrows():
+                with st.container(border=True):
+                    # Header: Title and Actions
+                    c_title, c_actions = st.columns([0.85, 0.15])
+                    
+                    with c_title:
+                        st.markdown(f"### {row['title']}")
+                        st.caption(f"Posted by **{row['author_name']}** on {row['created_at']}")
+                    
+                    with c_actions:
+                        # Actions only for owner
+                        if st.session_state.get('logged_in') and st.session_state['user_info']['roll_no'] == row['roll_no']:
+                            c_edit, c_del = st.columns(2)
+                            with c_edit:
+                                if st.button("✏️", key=f"edit_p_{row['id']}", help="Edit"):
+                                    edit_post_dialog(row)
+                            with c_del:
+                                if st.button("🗑️", key=f"del_p_{row['id']}", help="Delete"):
+                                    delete_post_dialog(row['id'])
+
+                    # Content
+                    if row['description']:
+                        st.write(row['description'])
+                    
+                    if row['link']:
+                        st.markdown(f"🔗 [Link]({row['link']})")
+
+    elif view_mode == "About this App":
+        st.header("🚀 Building the Class of '71 Roster App")
+        st.markdown("""
+        This application is the result of a collaborative development process between **Saminathan (IITM '71)** and **Antigravity**, an advanced AI agent from Google DeepMind.
+
+        ### 🛠️ The Journey
+        
+        #### 1. Data Preservation & Extraction
+        The project began with a static PDF document: `IITM_1971_Graduates.pdf`.
+        *   **Challenge**: The data was locked in a non-structured format with images and text mixed together.
+        *   **Solution**: We utilized **Python** and the `pdfplumber` library to programmatically scrape the document.
+        *   **Result**: Successfully extracted names, roll numbers, branches, and hostels for the entire batch. Crucially, we also extracted and processed binary image data to display both 1966 and current photos.
+
+        #### 2. Database Design
+        To ensure data persistence and scalability, we migrated from flat files to a **MySQL Database**.
+        *   Designed a schema to hold rich profile data (DOB, WAD, Spouse Name, Lives In).
+        *   Implemented an `update_schema.py` utility to handle migrations (like adding the *Items of Interest* feature).
+
+        #### 3. Application Development
+        We chose **Streamlit** for its ability to create beautiful, data-driven web apps quickly.
+        *   **Interactive UI**: Built Grid and List views for browsing the directory visually.
+        *   **Search & Filter**: Implemented real-time filtering by Branch and robust search by Name/Roll No.
+        *   **Secure Editing**: Added a login mechanism (Roll Number based) allowing alumni to edit *only* their own profiles.
+
+        #### 4. Advanced Features
+        *   **Analytics**: Integrated `Plotly` to generate Pareto charts showing the distribution of graduates across branches and locations.
+        *   **Items of Interest**: A community board for alumni to share updates and links, fully implemented with database backing.
+
+        ---
+        *Generated by Antigravity*
+        """)
+
 
