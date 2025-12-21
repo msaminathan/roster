@@ -15,10 +15,10 @@ load_dotenv()
 def get_db_connection():
     try:
         return mysql.connector.connect(
-            host=os.getenv('DB_HOST', '127.0.0.1'),
-            user=os.getenv('DB_USER', 'saminathan'),
-            password=os.getenv('DB_PASSWORD', 'Thamu$123'),
-            database=os.getenv('DB_NAME', 'roster')
+            host=os.getenv('DB_HOST'),
+            user=os.getenv('DB_USER'),
+            password=os.getenv('DB_PASSWORD'),
+            database=os.getenv('DB_NAME')
         )
     except mysql.connector.Error as err:
         print(f"Error connecting to DB: {err}")
