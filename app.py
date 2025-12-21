@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 import datetime
 import os
 from dotenv import load_dotenv
-from generate_roster_pdf import generate_pdf # Import generation function
+from generate_roster_pdf import generate_pdf, generate_text_roster # Import generation functions
 from sqlalchemy import create_engine, text
 
 # Load environment variables
@@ -181,23 +181,35 @@ st.sidebar.header("Export Directory")
 pdf_path = "IITM_1971_Graduates_Directory.pdf"
 
 if st.sidebar.button("🔄 Generate PDF"):
-    with st.spinner("Generating PDF Directory..."):
+    with st.spinner("Generating PDF Reports..."):
         try:
             generate_pdf()
-            st.sidebar.success("PDF Generated!")
+            generate_text_roster()
+            st.sidebar.success("PDFs Generated!")
         except Exception as e:
             st.sidebar.error(f"Error: {e}")
 
 if os.path.exists(pdf_path):
     with open(pdf_path, "rb") as pdf_file:
         st.sidebar.download_button(
-            label="📄 Download Directory PDF",
+            label="📄 Download Directory (Photos)",
             data=pdf_file,
             file_name="IITM_1971_Graduates_Directory.pdf",
             mime="application/pdf"
         )
 else:
-    st.sidebar.warning("PDF not found. Please regenerate.")
+    st.sidebar.warning("Directory PDF not found.")
+
+text_pdf_path = "IITM_1971_Graduates_List.pdf"
+if os.path.exists(text_pdf_path):
+    with open(text_pdf_path, "rb") as text_pdf_file:
+        st.sidebar.download_button(
+            label="📄 Download Roster (Text Only)",
+            data=text_pdf_file,
+            file_name="IITM_1971_Graduates_List.pdf",
+            mime="application/pdf"
+        )
+
 
 
 # Update Function

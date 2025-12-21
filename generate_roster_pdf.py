@@ -227,5 +227,100 @@ def generate_pdf(filename="IITM_1971_Graduates_Directory.pdf"):
     except Exception as e:
         print(f"Error building PDF: {e}")
 
+def generate_text_roster(filename="IITM_1971_Graduates_List.pdf"):
+    print("Connecting to database for Text Roster...")
+    conn = get_db_connection()
+    if not conn:
+        print("Failed to connect.")
+        return
+
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM graduates ORDER BY branch, name")
+    rows = cursor.fetchall()
+    conn.close()
+    
+    # Use Landscape for tabular data to fit more columns
+    doc = SimpleDocTemplate(filename, pagesize=landscape(letter),
+                            topMargin=0.5*inch, bottomMargin=0.5*inch, leftMargin=0.5*inch, rightMargin=0.5*inch)
+    
+    elements = []
+    styles = getSampleStyleSheet()
+    title_style = styles['Heading1']
+    title_style.alignment = 1 # Center
+    
+    elements.append(Paragraph("IIT Madras - Class of 1971 Graduates (Text Only)", title_style))
+    elements.append(Spacer(1, 0.2*inch))
+    
+    # Custom Style for Small Text to prevent wrapping
+    from reportlab.lib.styles import ParagraphStyle
+    small_style = ParagraphStyle(
+        'Small',
+        parent=styles['Normal'],
+        fontSize=8,
+        leading=10
+    )
+    
+    # Page Footer
+    def on_page_text(canvas, doc):
+        canvas.saveState()
+        canvas.setFont('Helvetica', 9)
+        canvas.drawCentredString(landscape(letter)[0]/2, 0.25*inch, f"Page {doc.page} | Generated: {os.getenv('DATE_OVERRIDE', '2025-12-21')}")
+        canvas.restoreState()
+
+    # Table Header
+    headers = ['Name', 'Roll No', 'Branch', 'Hostel', 'Lives In', 'Email', 'Phone']
+    data = [headers]
+    
+    # Table Data
+    for row in rows:
+        name = row['name'] if row['name'] else ""
+        roll = row['roll_no'] if row['roll_no'] else ""
+        branch = row['branch'] if row['branch'] else ""
+        hostel = row['hostel'] if row['hostel'] else ""
+        
+        lives = []
+        if row['lives_in']: lives.append(row['lives_in'])
+        if row['state']: lives.append(row['state'])
+        if row['country']: lives.append(row['country'])
+        location = ", ".join(lives)
+        
+        email = row['email'] if row['email'] else ""
+        phone = row['phone'] if row['phone'] else ""
+        
+        # Wrapping long text with SMALL STYLE
+        p_name = Paragraph(name, small_style)
+        p_loc = Paragraph(location, small_style)
+        p_email = Paragraph(email, small_style)
+        
+        data.append([p_name, roll, branch, hostel, p_loc, p_email, phone])
+        
+    # Table Style
+    # Col Widths: Total ~10 inch available
+    col_widths = [2.0*inch, 1.0*inch, 1.2*inch, 1.0*inch, 2.0*inch, 1.8*inch, 1.0*inch]
+    
+    t = Table(data, colWidths=col_widths, repeatRows=1)
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.grey),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,0), 9), # Reduced Header Font
+        ('BOTTOMPADDING', (0,0), (-1,0), 12),
+        ('BACKGROUND', (0,1), (-1,-1), colors.beige),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.lightgrey]),
+        ('FONTSIZE', (0,1), (-1,-1), 8), # Reduced Body Font
+    ]))
+    
+    elements.append(t)
+    
+    try:
+        doc.build(elements, onFirstPage=on_page_text, onLaterPages=on_page_text)
+        print(f"Successfully generated: {filename}")
+    except Exception as e:
+        print(f"Error building Text PDF: {e}")
+
 if __name__ == "__main__":
     generate_pdf()
+    generate_text_roster()
