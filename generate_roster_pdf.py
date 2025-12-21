@@ -7,6 +7,8 @@ from reportlab.lib.pagesizes import letter, landscape
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Image, Paragraph, Spacer, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
+import matplotlib.pyplot as plt
+from pypdf import PdfWriter
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -227,6 +229,41 @@ def generate_pdf(filename="IITM_1971_Graduates_Directory.pdf"):
     except Exception as e:
         print(f"Error building PDF: {e}")
 
+def get_month_from_str(date_str):
+    if not date_str: return None
+    try:
+        # Heuristic: Last 3 letters are the month, e.g. "12-Jan"
+        if len(date_str) >= 3:
+            return date_str[-3:]
+    except:
+        pass
+    return None
+
+def generate_plot_image(data, title, xlabel, ylabel, max_width=6*inch, max_height=4*inch):
+    if not data:
+        return None
+    # data is a dict or Counter: {category: count}
+    # Sort by count desc
+    sorted_data = dict(sorted(data.items(), key=lambda item: item[1], reverse=True))
+    
+    categories = list(sorted_data.keys())
+    counts = list(sorted_data.values())
+    
+    plt.figure(figsize=(8, 5))
+    plt.bar(categories, counts, color='skyblue')
+    plt.title(title)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
+    
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=100)
+    plt.close()
+    buf.seek(0)
+    
+    return Image(buf, width=max_width, height=max_height)
+
 def generate_text_roster(filename="IITM_1971_Graduates_List.pdf"):
     print("Connecting to database for Text Roster...")
     conn = get_db_connection()
@@ -315,12 +352,88 @@ def generate_text_roster(filename="IITM_1971_Graduates_List.pdf"):
     
     elements.append(t)
     
+    # --- Statistics Section ---
+    elements.append(PageBreak())
+    elements.append(Paragraph("Statistics", title_style))
+    elements.append(Spacer(1, 0.2*inch))
+    
+    from collections import Counter
+    
+    # Calculate Stats
+    branches_data = Counter([r['branch'] for r in rows if r['branch']])
+    hostels_data = Counter([r['hostel'] for r in rows if r['hostel']])
+    countries_data = Counter([r['country'] for r in rows if r['country']])
+    states_data = Counter([r['state'] for r in rows if r['state']])
+    dob_months_data = Counter([get_month_from_str(r['dob']) for r in rows if get_month_from_str(r['dob'])])
+    wad_months_data = Counter([get_month_from_str(r['wad']) for r in rows if get_month_from_str(r['wad'])])
+
+    # Helper to add section
+    def add_plot_section(heading, data, x_label):
+        elements.append(Paragraph(heading, styles['Heading2']))
+        img = generate_plot_image(data, heading, x_label, "Count")
+        if img:
+            elements.append(img)
+        else:
+            elements.append(Paragraph("No data available", styles['Normal']))
+        elements.append(Spacer(1, 0.2*inch))
+
+    # Branch
+    add_plot_section("Graduates by Branch", branches_data, "Branch")
+    
+    # Hostel
+    add_plot_section("Graduates by Hostel", hostels_data, "Hostel")
+    elements.append(PageBreak())
+    
+    # Country
+    add_plot_section("Graduates by Country", countries_data, "Country")
+    
+    # State
+    add_plot_section("Graduates by State", states_data, "State")
+    elements.append(PageBreak())
+    
+    # DOB Month
+    add_plot_section("Graduates by Birth Month", dob_months_data, "Month")
+    
+    # WAD Month
+    add_plot_section("Graduates by Wedding Anniversary Month", wad_months_data, "Month")
+    
     try:
         doc.build(elements, onFirstPage=on_page_text, onLaterPages=on_page_text)
         print(f"Successfully generated: {filename}")
     except Exception as e:
         print(f"Error building Text PDF: {e}")
 
+def generate_consolidated_report(final_filename="IITM_1971_Graduates_Complete_Report.pdf"):
+    print("Generating consolidated report...")
+    
+    # 1. Generate Individual Reports
+    photo_pdf = "IITM_1971_Graduates_Directory.pdf"
+    text_pdf = "IITM_1971_Graduates_List.pdf"
+    
+    generate_pdf(photo_pdf)
+    generate_text_roster(text_pdf)
+    
+    # 2. Merge
+    merger = PdfWriter()
+    
+    try:
+        # Append Photo Directory
+        with open(photo_pdf, "rb") as f:
+            merger.append(f)
+            
+        # Append Text Roster
+        with open(text_pdf, "rb") as f:
+            merger.append(f)
+            
+        # Write Output
+        with open(final_filename, "wb") as f_out:
+            merger.write(f_out)
+            
+        print(f"Successfully generated consolidated report: {final_filename}")
+        return final_filename
+    except Exception as e:
+        print(f"Error merging PDFs: {e}")
+        return None
+
 if __name__ == "__main__":
-    generate_pdf()
-    generate_text_roster()
+    generate_consolidated_report()

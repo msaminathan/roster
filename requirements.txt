@@ -7,3 +7,5 @@ plotly
 python-dotenv
 reportlab
 sqlalchemy
+matplotlib
+pypdf
