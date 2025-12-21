@@ -181,12 +181,23 @@ st.sidebar.header("Export Directory")
 pdf_path = "IITM_1971_Graduates_Complete_Report.pdf"
 
 if st.sidebar.button("🔄 Generate PDF"):
-    with st.spinner("Generating Consolidated Report..."):
-        try:
+    try:
+        with st.sidebar.status("Generating Report...", expanded=True) as status:
+            st.write("Initializing...")
+            
+            # We can optionally sleep briefly to let the user see the start
+            import time
+            time.sleep(0.5)
+            
+            st.write("Processing Data & Images...")
             generate_consolidated_report(pdf_path)
-            st.sidebar.success("PDFs Generated!")
-        except Exception as e:
-            st.sidebar.error(f"Error: {e}")
+            
+            status.update(label="Generation Complete!", state="complete", expanded=False)
+            
+        st.sidebar.success("PDFs Generated!")
+        st.rerun() # Rerun to ensure download button appears if it wasn't there
+    except Exception as e:
+        st.sidebar.error(f"Error: {e}")
 
 if os.path.exists(pdf_path):
     with open(pdf_path, "rb") as pdf_file:
