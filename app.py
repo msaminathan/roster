@@ -9,6 +9,8 @@ import plotly.graph_objects as go
 import datetime
 import os
 from dotenv import load_dotenv
+from generate_roster_pdf import generate_pdf # Import generation function
+from sqlalchemy import create_engine, text
 
 # Load environment variables
 load_dotenv()
@@ -29,21 +31,32 @@ def get_db_connection():
     except mysql.connector.Error as err:
         return None
 
+# SQLAlchemy Engine for Pandas
+def get_db_engine():
+    try:
+        user = os.getenv('DB_USER')
+        password = os.getenv('DB_PASSWORD')
+        host = os.getenv('DB_HOST')
+        dbname = os.getenv('DB_NAME')
+        # Use mysql-connector-python
+        return create_engine(f"mysql+mysqlconnector://{user}:{password}@{host}/{dbname}")
+    except Exception as e:
+        return None
+
 def load_data():
-    conn = get_db_connection()
-    if not conn:
+    engine = get_db_engine()
+    if not engine:
         return pd.DataFrame()
-    
-    # Ensure fresh data by committing (refreshes snapshot in REPEATABLE READ)
-    if conn.is_connected():
-        conn.commit()
         
     query = "SELECT * FROM graduates"
     try:
-        df = pd.read_sql(query, conn)
+        # Use connection from engine for robust handling
+        with engine.connect() as conn:
+            df = pd.read_sql(text(query), conn)
         return df
-    finally:
-        conn.close()
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        return pd.DataFrame() # Return empty on error
 
 # Helper to convert binary/hex to image
 def get_image_from_blob(blob_data):
@@ -162,6 +175,30 @@ elif sort_option == "Roll No (Ascending)":
 st.sidebar.markdown("---")
 st.sidebar.metric("Total Graduates", len(df))
 st.sidebar.metric("Shown", len(filtered_df))
+
+st.sidebar.markdown("---")
+st.sidebar.header("Export Directory")
+pdf_path = "IITM_1971_Graduates_Directory.pdf"
+
+if st.sidebar.button("🔄 Generate PDF"):
+    with st.spinner("Generating PDF Directory..."):
+        try:
+            generate_pdf()
+            st.sidebar.success("PDF Generated!")
+        except Exception as e:
+            st.sidebar.error(f"Error: {e}")
+
+if os.path.exists(pdf_path):
+    with open(pdf_path, "rb") as pdf_file:
+        st.sidebar.download_button(
+            label="📄 Download Directory PDF",
+            data=pdf_file,
+            file_name="IITM_1971_Graduates_Directory.pdf",
+            mime="application/pdf"
+        )
+else:
+    st.sidebar.warning("PDF not found. Please regenerate.")
+
 
 # Update Function
 def update_graduate(id, name, roll_no, hostel, dob, wad, lives_in, state, email, phone, branch, new_photo_bytes=None):
@@ -506,15 +543,13 @@ else:
         
         # --- Helper Functions for Posts ---
         def get_posts():
-            conn = get_db_connection()
-            if not conn: return pd.DataFrame()
+            engine = get_db_engine()
+            if not engine: return pd.DataFrame()
             try:
-                # Fetch latest first
-                return pd.read_sql("SELECT * FROM posts ORDER BY created_at DESC", conn)
+                with engine.connect() as conn:
+                    return pd.read_sql(text("SELECT * FROM posts ORDER BY created_at DESC"), conn)
             except:
                 return pd.DataFrame()
-            finally:
-                conn.close()
 
         def create_post(roll_no, author_name, title, description, link):
             conn = get_db_connection()

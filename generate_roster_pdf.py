@@ -1,0 +1,231 @@
+import os
+import io
+import mysql.connector
+from PIL import Image as PILImage
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter, landscape
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Image, Paragraph, Spacer, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import inch
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+def get_db_connection():
+    try:
+        return mysql.connector.connect(
+            host=os.getenv('DB_HOST', '127.0.0.1'),
+            user=os.getenv('DB_USER', 'saminathan'),
+            password=os.getenv('DB_PASSWORD', 'Thamu$123'),
+            database=os.getenv('DB_NAME', 'roster')
+        )
+    except mysql.connector.Error as err:
+        print(f"Error connecting to DB: {err}")
+        return None
+
+def get_image_from_blob(blob, max_width=1.5*inch, max_height=2*inch):
+    if not blob:
+        return None
+    try:
+        img_buffer = io.BytesIO(blob)
+        pil_img = PILImage.open(img_buffer)
+        
+        if pil_img.mode != 'RGB':
+            pil_img = pil_img.convert('RGB')
+            
+        # Calculate scaling to fit within box
+        # We handle aspect ratio
+        img_w, img_h = pil_img.size
+        aspect = img_h / float(img_w)
+        
+        # Determine width/height to fit in max_width x max_height
+        # ReportLab Image takes width and height as arguments
+        
+        # If we fix width
+        final_w = max_width
+        final_h = max_width * aspect
+        
+        # If height is too big, scale by height
+        if final_h > max_height:
+             final_h = max_height
+             final_w = final_h / aspect
+
+        out_buffer = io.BytesIO()
+        pil_img.save(out_buffer, format='JPEG')
+        out_buffer.seek(0)
+        
+        # Create ReportLab Image
+        rl_img = Image(out_buffer, width=final_w, height=final_h)
+        return rl_img
+    except Exception as e:
+        # print(f"Error processing image: {e}") 
+        return None
+
+def generate_pdf(filename="IITM_1971_Graduates_Directory.pdf"):
+    print("Connecting to database...")
+    conn = get_db_connection()
+    if not conn:
+        print("Failed to connect.")
+        return
+
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM graduates ORDER BY branch, name")
+    rows = cursor.fetchall()
+    conn.close()
+    print(f"Fetched {len(rows)} records.")
+    
+    # Context to track state across pages
+    class PdfContext:
+        def __init__(self):
+            self.branch_name = ""
+            
+    context = PdfContext()
+
+    # Flowable to update branch name
+    from reportlab.platypus import Flowable
+    class SetBranch(Flowable):
+        def __init__(self, name):
+            Flowable.__init__(self)
+            self.name = name
+            
+        def wrap(self, w, h):
+            return (0, 0)
+            
+        def draw(self):
+            # Just update context. Header drawing is deferred to end of page.
+            context.branch_name = self.name
+
+    # Page callback
+    def on_page(canvas, doc):
+        canvas.saveState()
+        
+        # Footer: Page Number (Center)
+        canvas.setFont('Helvetica', 9)
+        page_num_text = f"Page {doc.page}"
+        canvas.drawCentredString(letter[0]/2, 0.5*inch, page_num_text)
+        
+        # Footer: Date (Right)
+        from datetime import datetime
+        date_text = datetime.now().strftime("%Y-%m-%d")
+        canvas.drawRightString(letter[0] - 0.5*inch, 0.5*inch, date_text)
+        
+        canvas.restoreState()
+        
+        # DEFERRED Header Drawing
+        def draw_header(page_num):
+            if context.branch_name:
+                canvas.saveState()
+                canvas.setFont('Helvetica-Bold', 12)
+                canvas.drawRightString(letter[0] - 0.5*inch, letter[1] - 0.75*inch, context.branch_name)
+                canvas.restoreState()
+                
+        canvas.setPageCallBack(draw_header)
+
+
+    doc = SimpleDocTemplate(filename, pagesize=letter, # Portrait by default
+                            topMargin=1.0*inch, bottomMargin=0.75*inch, leftMargin=0.5*inch, rightMargin=0.5*inch)
+    elements = []
+    styles = getSampleStyleSheet()
+    title_style = styles['Heading1']
+    title_style.alignment = 1 # Center
+    
+    cell_style = styles['Normal']
+    cell_style.fontSize = 10
+    cell_style.leading = 12
+
+    elements.append(Paragraph("IIT Madras - Class of 1971 Graduates", title_style))
+    elements.append(Spacer(1, 0.2*inch))
+
+    # Group by Branch
+    from collections import defaultdict
+    branches = defaultdict(list)
+    for row in rows:
+        b_name = row['branch']
+        if not b_name:
+            b_name = "Unknown Branch"
+        branches[b_name].append(row)
+
+    first_branch = True
+
+    for branch_name in sorted(branches.keys()):
+        if not first_branch:
+             elements.append(PageBreak())
+        first_branch = False
+        
+        # Update context for Header
+        elements.append(SetBranch(branch_name))
+        
+        # Branch Heading on page (Optional section separator)
+        # User requested per-graduate detail, but keeping a section header is usually preferred. 
+        # I'll leave a small spacer.
+        elements.append(Spacer(1, 0.1*inch))
+        
+        data = []
+        # Header Row
+        data.append(['Graduate Details', '1966', 'Current'])
+        
+        for grad in branches[branch_name]:
+            # Construct details
+            details = []
+            name = grad['name'] if grad['name'] else "Unknown"
+            roll = grad['roll_no'] if grad['roll_no'] else ""
+            
+            info_text = f"<b>{name}</b>"
+            if roll:
+                info_text += f" ({roll})"
+            info_text += "<br/>"
+            
+            # Add Branch to details (Requested Feature)
+            info_text += f"<b>Branch:</b> {branch_name}<br/>"
+            
+            extras = []
+            if grad['hostel']: extras.append(f"<b>Hostel:</b> {grad['hostel']}")
+            if grad['dob']: extras.append(f"<b>DOB:</b> {grad['dob']}")
+            if grad['wad']: extras.append(f"<b>WAD:</b> {grad['wad']}")
+            if grad['spouse_name']: extras.append(f"<b>Spouse:</b> {grad['spouse_name']}")
+            
+            loc_parts = []
+            if grad['lives_in']: loc_parts.append(grad['lives_in'])
+            if grad['state']: loc_parts.append(grad['state'])
+            if grad['country']: loc_parts.append(grad['country'])
+            if loc_parts:
+                extras.append(f"<b>Lives in:</b> {', '.join(loc_parts)}")
+            
+            if grad['email']: extras.append(f"<b>Email:</b> {grad['email']}")
+            if grad['phone']: extras.append(f"<b>Phone:</b> {grad['phone']}")
+            
+            info_text += "<br/>".join(extras)
+            
+            p_details = Paragraph(info_text, cell_style)
+            
+            img_66 = get_image_from_blob(grad['photo_1966'], max_width=1.2*inch, max_height=1.5*inch)
+            img_curr = get_image_from_blob(grad['photo_current'], max_width=1.2*inch, max_height=1.5*inch)
+            
+            data.append([p_details, img_66, img_curr])
+
+        t = Table(data, colWidths=[5.0*inch, 1.25*inch, 1.25*inch], repeatRows=1)
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.Color(0.9, 0.9, 0.9)),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.black),
+            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0,0), (-1,0), 10),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+            ('TOPPADDING', (0,0), (-1,-1), 6),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.Color(0.97, 0.97, 0.97)]),
+        ]))
+        
+        elements.append(t)
+
+    print("Building PDF...")
+    try:
+        doc.build(elements, onFirstPage=on_page, onLaterPages=on_page)
+        print(f"Successfully generated: {filename}")
+    except Exception as e:
+        print(f"Error building PDF: {e}")
+
+if __name__ == "__main__":
+    generate_pdf()
