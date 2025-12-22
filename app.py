@@ -146,7 +146,7 @@ selected_branch = st.sidebar.selectbox("Filter by Branch", unique_branches)
 # Sort Options
 sort_option = st.sidebar.selectbox("Sort By", ["Name (A-Z)", "Country, City", "Roll No (Ascending)"])
 
-view_mode = st.sidebar.radio("View Option", ["Grid View", "List View", "Table (Text)", "Table (with Icons)", "Statistics", "Items of Interest", "About this App"])
+view_mode = st.sidebar.radio("View Option", ["Grid View", "List View", "Table (Text)", "Table (with Icons)", "Statistics", "Items of Interest", "Reports & Downloads", "About this App"])
 
 # Filtering
 filtered_df = df.copy()
@@ -176,39 +176,7 @@ st.sidebar.markdown("---")
 st.sidebar.metric("Total Graduates", len(df))
 st.sidebar.metric("Shown", len(filtered_df))
 
-st.sidebar.markdown("---")
-st.sidebar.header("Export Directory")
-pdf_path = "IITM_1971_Graduates_Complete_Report.pdf"
 
-if st.sidebar.button("🔄 Generate PDF"):
-    try:
-        with st.sidebar.status("Generating Report...", expanded=True) as status:
-            st.write("Initializing...")
-            
-            # We can optionally sleep briefly to let the user see the start
-            import time
-            time.sleep(0.5)
-            
-            st.write("Processing Data & Images...")
-            generate_consolidated_report(pdf_path)
-            
-            status.update(label="Generation Complete!", state="complete", expanded=False)
-            
-        st.sidebar.success("PDFs Generated!")
-        st.rerun() # Rerun to ensure download button appears if it wasn't there
-    except Exception as e:
-        st.sidebar.error(f"Error: {e}")
-
-if os.path.exists(pdf_path):
-    with open(pdf_path, "rb") as pdf_file:
-        st.sidebar.download_button(
-            label="📄 Download Complete Report",
-            data=pdf_file,
-            file_name="IITM_1971_Graduates_Complete_Report.pdf",
-            mime="application/pdf"
-        )
-else:
-    st.sidebar.info("Click 'Generate PDF' to create the report.")
 
 
 
@@ -696,6 +664,69 @@ else:
                     if row['link']:
                         st.markdown(f"🔗 [Link]({row['link']})")
 
+    elif view_mode == "Reports & Downloads":
+        st.header("📊 Reports & Downloads")
+        st.markdown("Generate and download the latest version of the Alumni Roster in PDF format.")
+
+        col_gen, col_info = st.columns([1, 2])
+        with col_gen:
+            if st.button("🔄 Generate Latest Reports", type="primary"):
+                with st.status("Generating Reports...", expanded=True) as status:
+                    st.write("Initializing...")
+                    import time
+                    time.sleep(0.5)
+                    
+                    st.write("Processing Data & Images...")
+                    generate_consolidated_report("IITM_1971_Graduates_Complete_Report.pdf")
+                    
+                    status.update(label="Generation Complete!", state="complete", expanded=False)
+                st.success("Reports generated successfully!")
+                st.rerun()
+
+        st.markdown("### Available Downloads")
+        
+        # Check for files
+        c1, c2, c3 = st.columns(3)
+        
+        with c1:
+             if os.path.exists("IITM_1971_Graduates_Complete_Report.pdf"):
+                 with open("IITM_1971_Graduates_Complete_Report.pdf", "rb") as f:
+                     st.download_button(
+                         label="📄 Complete Report (PDF)",
+                         data=f,
+                         file_name="IITM_1971_Graduates_Complete_Report.pdf",
+                         mime="application/pdf",
+                         use_container_width=True
+                     )
+             else:
+                 st.info("Complete Report not generated yet.")
+
+        with c2:
+             if os.path.exists("IITM_1971_Graduates_Directory.pdf"):
+                 with open("IITM_1971_Graduates_Directory.pdf", "rb") as f:
+                     st.download_button(
+                         label="🖼️ Photo Directory Only",
+                         data=f,
+                         file_name="IITM_1971_Graduates_Directory.pdf",
+                         mime="application/pdf",
+                         use_container_width=True
+                     )
+             else:
+                 st.info("Photo Directory not generated yet.")
+
+        with c3:
+             if os.path.exists("IITM_1971_Graduates_List.pdf"):
+                 with open("IITM_1971_Graduates_List.pdf", "rb") as f:
+                     st.download_button(
+                         label="📝 Text Roster Only",
+                         data=f,
+                         file_name="IITM_1971_Graduates_List.pdf",
+                         mime="application/pdf",
+                         use_container_width=True
+                     )
+             else:
+                 st.info("Text Roster not generated yet.")
+
     elif view_mode == "About this App":
         st.header("🚀 Building the Class of '71 Roster App")
         st.markdown("""
@@ -723,9 +754,19 @@ else:
         #### 4. Advanced Features
         *   **Analytics**: Integrated `Plotly` to generate Pareto charts showing the distribution of graduates across branches and locations.
         *   **Items of Interest**: A community board for alumni to share updates and links, fully implemented with database backing.
+        *   **Report Generation**: Capabilities to generate and download the roster in multiple PDF formats (Consolidated, Photo-only, Text-only).
 
         ---
         *Generated by Antigravity*
+        """)
+
+
+
+        st.markdown("---")
+        st.subheader("⚠️ Disclaimer & Privacy")
+        st.markdown("""
+        *   **Data Usage**: This roster is intended for the exclusive use of IIT Madras Class of 1971 alumni. Please do not distribute this document or personal contact details to third parties.
+        *   **Accuracy**: While we strive for accuracy, some data may be outdated. Please use the **Edit** feature to keep your profile current.
         """)
 
 
