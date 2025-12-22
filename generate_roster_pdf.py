@@ -109,7 +109,7 @@ def generate_pdf(filename="IITM_1971_Graduates_Directory.pdf"):
         
         # Footer: Date (Right)
         from datetime import datetime
-        date_text = datetime.now().strftime("%Y-%m-%d")
+        date_text = datetime.now().strftime("%Y-%m-%d %H:%M")
         canvas.drawRightString(letter[0] - 0.5*inch, 0.5*inch, date_text)
         
         canvas.restoreState()
@@ -301,7 +301,11 @@ def generate_text_roster(filename="IITM_1971_Graduates_List.pdf"):
     def on_page_text(canvas, doc):
         canvas.saveState()
         canvas.setFont('Helvetica', 9)
-        canvas.drawCentredString(landscape(letter)[0]/2, 0.25*inch, f"Page {doc.page} | Generated: {os.getenv('DATE_OVERRIDE', '2025-12-21')}")
+        from datetime import datetime
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+        date_str = os.getenv('DATE_OVERRIDE') if os.getenv('DATE_OVERRIDE') else current_time
+        
+        canvas.drawCentredString(landscape(letter)[0]/2, 0.25*inch, f"Page {doc.page} | Generated: {date_str}")
         canvas.restoreState()
 
     # Table Header

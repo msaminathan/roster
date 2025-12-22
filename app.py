@@ -304,12 +304,12 @@ else:
                     
                     with c1:
                         if p1:
-                            st.image(p1, caption="1966", use_container_width=True)
+                            st.image(p1, caption="1966", width="stretch")
                         else:
                             st.text("No Image")
                     with c2:
                         if p2:
-                            st.image(p2, caption="Current", use_container_width=True)
+                            st.image(p2, caption="Current", width="stretch")
                         else:
                             st.text("No Image")
                             
@@ -447,7 +447,7 @@ else:
                 template='plotly_white'
             )
             
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
         # 1. Graduates by Branch
         st.subheader("1. Graduates by Branch")
@@ -685,44 +685,58 @@ else:
 
         st.markdown("### Available Downloads")
         
+        def get_file_info(filepath):
+            try:
+                mtime = os.path.getmtime(filepath)
+                ts = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M')
+                return ts
+            except:
+                return None
+        
         # Check for files
         c1, c2, c3 = st.columns(3)
         
         with c1:
              if os.path.exists("IITM_1971_Graduates_Complete_Report.pdf"):
+                 ts = get_file_info("IITM_1971_Graduates_Complete_Report.pdf")
+                 label = f"📄 Complete Report (PDF) - [{ts}]" if ts else "📄 Complete Report (PDF)"
                  with open("IITM_1971_Graduates_Complete_Report.pdf", "rb") as f:
                      st.download_button(
-                         label="📄 Complete Report (PDF)",
+                         label=label,
                          data=f,
                          file_name="IITM_1971_Graduates_Complete_Report.pdf",
                          mime="application/pdf",
-                         use_container_width=True
+                         width="stretch"
                      )
              else:
                  st.info("Complete Report not generated yet.")
 
         with c2:
              if os.path.exists("IITM_1971_Graduates_Directory.pdf"):
+                 ts = get_file_info("IITM_1971_Graduates_Directory.pdf")
+                 label = f"🖼️ Photo Directory Only - [{ts}]" if ts else "🖼️ Photo Directory Only"
                  with open("IITM_1971_Graduates_Directory.pdf", "rb") as f:
                      st.download_button(
-                         label="🖼️ Photo Directory Only",
+                         label=label,
                          data=f,
                          file_name="IITM_1971_Graduates_Directory.pdf",
                          mime="application/pdf",
-                         use_container_width=True
+                         width="stretch"
                      )
              else:
                  st.info("Photo Directory not generated yet.")
 
         with c3:
              if os.path.exists("IITM_1971_Graduates_List.pdf"):
+                 ts = get_file_info("IITM_1971_Graduates_List.pdf")
+                 label = f"📝 Text Roster Only - [{ts}]" if ts else "📝 Text Roster Only"
                  with open("IITM_1971_Graduates_List.pdf", "rb") as f:
                      st.download_button(
-                         label="📝 Text Roster Only",
+                         label=label,
                          data=f,
                          file_name="IITM_1971_Graduates_List.pdf",
                          mime="application/pdf",
-                         use_container_width=True
+                         width="stretch"
                      )
              else:
                  st.info("Text Roster not generated yet.")
