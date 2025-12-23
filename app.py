@@ -94,10 +94,86 @@ def verify_user(roll_no):
         cursor.close()
         conn.close()
 
+# Helper to check for today's events
+def check_today_events(df):
+    today = datetime.datetime.now()
+    current_day = today.day
+    current_month_name = today.strftime("%b") # e.g., "Jan", "Feb"
+    
+    events = []
+    
+    # Map for inconsistent month abbreviations if necessary (e.g. Sept vs Sep)
+    # Assuming standard 3-letter months based on "ddd-mmm" description and "12-Jun" example.
+    
+    for _, row in df.iterrows():
+        # Check DOB
+        if row['dob']:
+            try:
+                # Expected formats: "12-Jun", "7-May"
+                parts = row['dob'].split('-')
+                if len(parts) == 2:
+                    d = int(parts[0])
+                    m = parts[1]
+                    if d == current_day and m == current_month_name:
+                        events.append({
+                            'name': row['name'],
+                            'type': 'Birthday',
+                            'photo_1966': row['photo_1966'],
+                            'photo_current': row['photo_current']
+                        })
+            except:
+                pass # Ignore parse errors
+
+        # Check WAD
+        if row['wad']:
+            try:
+                parts = row['wad'].split('-')
+                if len(parts) == 2:
+                    d = int(parts[0])
+                    m = parts[1]
+                    if d == current_day and m == current_month_name:
+                        events.append({
+                            'name': row['name'],
+                            'type': 'Wedding Anniversary',
+                            'photo_1966': row['photo_1966'],
+                            'photo_current': row['photo_current']
+                        })
+            except:
+                pass
+                
+    return events
+
+# Popup Dialog
+@st.dialog("🎉 Special Occasions Today!")
+def show_event_popup(events):
+    for event in events:
+        st.subheader(f"Happy {event['type']}, {event['name']}!")
+        
+        # Photos
+        c1, c2 = st.columns(2)
+        p1 = get_image_from_blob(event['photo_1966'])
+        p2 = get_image_from_blob(event['photo_current'])
+        
+        with c1:
+            if p1:
+                st.image(p1, caption="1966", width=150)
+            else:
+                st.info("No 1966 Photo")
+        with c2:
+            if p2:
+                st.image(p2, caption="Current", width=150)
+            else:
+                st.info("No Current Photo")
+                
+        st.markdown(f"**Wishing you a wonderful day filled with joy and happiness!**")
+        st.divider()
+
 # Session State for Login
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
     st.session_state['user_info'] = None
+if 'show_popup' not in st.session_state:
+    st.session_state['show_popup'] = False
 
 # Title with Image (Always visible header)
 c_img, c_title = st.columns([1, 5])
@@ -122,6 +198,7 @@ if not st.session_state['logged_in']:
         if user:
             st.session_state['logged_in'] = True
             st.session_state['user_info'] = {'name': user[0], 'roll_no': user[1]}
+            st.session_state['show_popup'] = True # Trigger popup on first load
             st.success(f"Welcome, {user[0]}!")
             st.rerun()
         else:
@@ -133,7 +210,16 @@ st.sidebar.markdown(f"**Logged in as:** {st.session_state['user_info']['name']}"
 if st.sidebar.button("Logout"):
     st.session_state['logged_in'] = False
     st.session_state['user_info'] = None
+    st.session_state['show_popup'] = False
     st.rerun()
+
+# Check Events Popup
+if st.session_state['show_popup']:
+    events = check_today_events(df)
+    if events:
+        show_event_popup(events)
+    # Disable popup after showing once
+    st.session_state['show_popup'] = False
 
 st.sidebar.header("Filter & Search")
 search_term = st.sidebar.text_input("Search (Name or Roll No)", "")
