@@ -310,7 +310,8 @@ st.sidebar.markdown(f"""
 <br>
 """, unsafe_allow_html=True)
 
-st.sidebar.metric("Currently Shown", len(filtered_df))
+if view_mode in ["Grid View", "List View", "Table (Text)", "Table (with Icons)"]:
+    st.sidebar.metric("Total Shown", len(filtered_df))
 
 
 
