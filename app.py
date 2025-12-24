@@ -232,7 +232,7 @@ selected_branch = st.sidebar.selectbox("Filter by Branch", unique_branches)
 # Sort Options
 sort_option = st.sidebar.selectbox("Sort By", ["Name (A-Z)", "Country, City", "Roll No (Ascending)"])
 
-view_mode = st.sidebar.radio("View Option", ["Grid View", "List View", "Table (Text)", "Table (with Icons)", "Statistics", "Items of Interest", "In Memoriam", "Reports & Downloads", "About this App"])
+view_mode = st.sidebar.radio("View Option", ["Grid View", "List View", "Table (Text)", "Table (with Icons)", "Statistics", "Items of Interest", "Missing Contacts", "In Memoriam", "Reports & Downloads", "About this App"])
 
 # Filtering
 filtered_df = df.copy()
@@ -749,6 +749,80 @@ else:
                     
                     if row['link']:
                         st.markdown(f"🔗 [Link]({row['link']})")
+
+    elif view_mode == "Missing Contacts":
+        st.markdown("<h1 style='text-align: center; color: #d35400;'>🔍 Help Us Find 🔍</h1>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; font-style: italic; color: #777;'>We would love to renew contact with these batchmates.</p>", unsafe_allow_html=True)
+        st.markdown("---")
+
+        def get_tracked_data():
+            conn = get_db_connection()
+            if not conn: return []
+            cursor = conn.cursor(dictionary=True)
+            try:
+                cursor.execute("SELECT * FROM tracked ORDER BY name")
+                return cursor.fetchall()
+            except:
+                return []
+            finally:
+                cursor.close()
+                conn.close()
+
+        tracked_data = get_tracked_data()
+
+        if not tracked_data:
+            st.info("No records found.")
+        else:
+            cols = st.columns(3)
+            
+            st.markdown("""
+            <style>
+            .tracked-card {
+                background-color: #fff8e1; /* Light amber */
+                padding: 20px;
+                border-radius: 15px;
+                border: 1px solid #ffe082;
+                margin-bottom: 20px;
+                text-align: center;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            }
+            .tracked-name {
+                font-size: 1.25em;
+                font-weight: bold;
+                color: #e67e22;
+                margin-top: 10px;
+            }
+            .tracked-details {
+                color: #555;
+                font-size: 0.9em;
+                margin-top: 5px;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+
+            for idx, row in enumerate(tracked_data):
+                col = cols[idx % 3]
+                with col:
+                    st.markdown('<div class="tracked-card">', unsafe_allow_html=True)
+                    
+                    if row['photo']:
+                        photo = get_image_from_blob(row['photo'])
+                        if photo:
+                            st.image(photo, width=130)
+                        else:
+                            st.text("No Photo")
+                    else:
+                        # Placeholder for text-only
+                        st.markdown("<div style='font-size:3em;'>👤</div>", unsafe_allow_html=True)
+                    
+                    st.markdown(f"""
+                        <div class="tracked-name">{row['name']}</div>
+                        <div class="tracked-details">
+                            <b>{row['branch']}</b><br>
+                            Roll No: {row['roll_no']}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
     elif view_mode == "In Memoriam":
         st.markdown("<h1 style='text-align: center; color: #555;'>🌹 In Loving Memory 🌹</h1>", unsafe_allow_html=True)
