@@ -258,9 +258,59 @@ elif sort_option == "Roll No (Ascending)":
     filtered_df = filtered_df.sort_values(by='roll_no', ascending=True)
 
 # Display Stats
+# Display Stats
 st.sidebar.markdown("---")
-st.sidebar.metric("Total Graduates", len(df))
-st.sidebar.metric("Shown", len(filtered_df))
+
+# Fetch counts for sidebar
+def get_table_count(table_name):
+    conn = get_db_connection()
+    if not conn: return 0
+    cursor = conn.cursor()
+    try:
+        cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+        return cursor.fetchone()[0]
+    except:
+        return 0
+    finally:
+        cursor.close()
+        conn.close()
+
+# Only fetch if not already done (optimization? No, need fresh counts occasionally, but let's simple fetch)
+grad_count = len(df)
+memoriam_count = get_table_count("memoriam")
+tracked_count = get_table_count("tracked")
+grand_total = grad_count + memoriam_count + tracked_count
+
+# Custom Stats Table
+st.sidebar.markdown(f"""
+<div style="font-family: sans-serif; font-size: 0.9em;">
+    <table style="width:100%; border-collapse: collapse; color: #333;">
+        <tr style="border-bottom: 1px solid #ddd;">
+            <td style="padding: 5px; font-weight: bold;">Category</td>
+            <td style="padding: 5px; text-align: right; font-weight: bold;">Count</td>
+        </tr>
+        <tr>
+            <td style="padding: 5px;">🎓 Graduates</td>
+            <td style="padding: 5px; text-align: right;">{grad_count}</td>
+        </tr>
+        <tr>
+            <td style="padding: 5px;">🌹 In Memoriam</td>
+            <td style="padding: 5px; text-align: right;">{memoriam_count}</td>
+        </tr>
+        <tr>
+            <td style="padding: 5px;">🔍 Yet to Track</td>
+            <td style="padding: 5px; text-align: right;">{tracked_count}</td>
+        </tr>
+        <tr style="border-top: 2px solid #555; background-color: #f0f2f6;">
+            <td style="padding: 5px; font-weight: bold;">Grand Total</td>
+            <td style="padding: 5px; text-align: right; font-weight: bold;">{grand_total}</td>
+        </tr>
+    </table>
+</div>
+<br>
+""", unsafe_allow_html=True)
+
+st.sidebar.metric("Currently Shown", len(filtered_df))
 
 
 
