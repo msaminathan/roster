@@ -232,7 +232,7 @@ selected_branch = st.sidebar.selectbox("Filter by Branch", unique_branches)
 # Sort Options
 sort_option = st.sidebar.selectbox("Sort By", ["Name (A-Z)", "Country, City", "Roll No (Ascending)"])
 
-view_mode = st.sidebar.radio("View Option", ["Grid View", "List View", "Table (Text)", "Table (with Icons)", "Statistics", "Items of Interest", "Reports & Downloads", "About this App"])
+view_mode = st.sidebar.radio("View Option", ["Grid View", "List View", "Table (Text)", "Table (with Icons)", "Statistics", "Items of Interest", "In Memoriam", "Reports & Downloads", "About this App"])
 
 # Filtering
 filtered_df = df.copy()
@@ -749,6 +749,89 @@ else:
                     
                     if row['link']:
                         st.markdown(f"🔗 [Link]({row['link']})")
+
+    elif view_mode == "In Memoriam":
+        st.markdown("<h1 style='text-align: center; color: #555;'>🌹 In Loving Memory 🌹</h1>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; font-style: italic; color: #777;'>Remembering our batchmates who are no longer with us.</p>", unsafe_allow_html=True)
+        st.markdown("---")
+
+        def get_memoriam_data():
+            conn = get_db_connection()
+            if not conn: return []
+            cursor = conn.cursor(dictionary=True)
+            try:
+                cursor.execute("SELECT * FROM memoriam ORDER BY name")
+                return cursor.fetchall()
+            except:
+                return []
+            finally:
+                cursor.close()
+                conn.close()
+
+        mem_data = get_memoriam_data()
+        
+        if not mem_data:
+            st.info("No records found.")
+        else:
+            # Grid Layout
+            cols = st.columns(3)
+            
+            # Custom CSS for memoriam cards
+            st.markdown("""
+            <style>
+            .memoriam-card {
+                background-color: #fff0f5; /* Lavender Blush key */
+                padding: 20px;
+                border-radius: 15px;
+                border: 1px solid #eebbcc;
+                margin-bottom: 20px;
+                text-align: center;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            }
+            .mem-name {
+                font-size: 1.3em;
+                font-weight: bold;
+                color: #4a4a4a;
+                margin-top: 10px;
+            }
+            .mem-details {
+                color: #666;
+                font-size: 0.95em;
+                margin-top: 5px;
+            }
+            .flower-icon {
+                font-size: 1.2em;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+
+            for idx, row in enumerate(mem_data):
+                col = cols[idx % 3]
+                with col:
+                    with st.container():
+                        # We use a container to apply the visual style implicitly via the card logic or directly elements
+                        # Since st.markdown(unsafe_allow_html) for div wrapping is tricky with st.image
+                        # We will use st.card-like structure
+                        
+                        # Render the card start
+                        st.markdown('<div class="memoriam-card">', unsafe_allow_html=True)
+                        
+                        # Image
+                        photo = get_image_from_blob(row['photo'])
+                        if photo:
+                            st.image(photo, width=150) # Centered by default in Streamlit column if we don't use 'width' too specific or column width
+                        else:
+                            st.text("No Photo")
+                        
+                        st.markdown(f"""
+                            <div class="mem-name">{row['name']} <span class="flower-icon">🕊️</span></div>
+                            <div class="mem-details">
+                                <b>{row['branch']}</b><br>
+                                Roll No: {row['roll_no']}
+                            </div>
+                            <div style="margin-top:10px; font-size:1.5em;">💐</div>
+                        </div>
+                        """, unsafe_allow_html=True)
 
     elif view_mode == "Reports & Downloads":
         st.header("📊 Reports & Downloads")
