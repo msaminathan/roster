@@ -312,6 +312,10 @@ st.sidebar.markdown(f"""
 
 if view_mode in ["Grid View", "List View", "Table (Text)", "Table (with Icons)"]:
     st.sidebar.metric("Total Shown", len(filtered_df))
+elif view_mode == "Missing Contacts":
+    st.sidebar.metric("Total Shown", tracked_count)
+elif view_mode == "In Memoriam":
+    st.sidebar.metric("Total Shown", memoriam_count)
 
 
 
