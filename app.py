@@ -112,6 +112,46 @@ def verify_user(roll_no):
         cursor.close()
         conn.close()
 
+# Helper to log login
+def log_login(roll_no, name):
+    conn = get_db_connection()
+    if not conn: return None
+    cursor = conn.cursor()
+    try:
+        current_time = datetime.datetime.now()
+        login_date = current_time.strftime('%Y-%m-%d')
+        login_time = current_time.strftime('%H:%M:%S')
+        
+        sql = "INSERT INTO user_logs (roll_no, name, login_date, login_time) VALUES (%s, %s, %s, %s)"
+        cursor.execute(sql, (roll_no, name, login_date, login_time))
+        conn.commit()
+        return cursor.lastrowid
+    except Exception as e:
+        print(f"Error logging login: {e}")
+        return None
+    finally:
+        cursor.close()
+        conn.close()
+
+# Helper to log logout
+def log_logout(log_id):
+    if not log_id: return
+    conn = get_db_connection()
+    if not conn: return
+    cursor = conn.cursor()
+    try:
+        current_time = datetime.datetime.now()
+        logout_time = current_time.strftime('%H:%M:%S')
+        
+        sql = "UPDATE user_logs SET logout_time = %s WHERE id = %s"
+        cursor.execute(sql, (logout_time, log_id))
+        conn.commit()
+    except Exception as e:
+        print(f"Error logging logout: {e}")
+    finally:
+        cursor.close()
+        conn.close()
+
 # Helper to check for today's events
 def check_today_events(df):
     today = datetime.datetime.now()
@@ -190,6 +230,7 @@ def show_event_popup(events):
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
     st.session_state['user_info'] = None
+    st.session_state['log_id'] = None
 if 'show_popup' not in st.session_state:
     st.session_state['show_popup'] = False
 
@@ -216,6 +257,11 @@ if not st.session_state['logged_in']:
         if user:
             st.session_state['logged_in'] = True
             st.session_state['user_info'] = {'name': user[0], 'roll_no': user[1]}
+            
+            # Log login
+            log_id = log_login(user[1], user[0])
+            st.session_state['log_id'] = log_id
+            
             st.session_state['show_popup'] = True # Trigger popup on first load
             st.success(f"Welcome, {user[0]}!")
             st.rerun()
@@ -226,9 +272,14 @@ if not st.session_state['logged_in']:
 # Logout
 st.sidebar.markdown(f"**Logged in as:** {st.session_state['user_info']['name']}")
 if st.sidebar.button("Logout"):
+    # Log logout
+    if 'log_id' in st.session_state:
+        log_logout(st.session_state['log_id'])
+
     st.session_state['logged_in'] = False
     st.session_state['user_info'] = None
     st.session_state['show_popup'] = False
+    st.session_state['log_id'] = None
     st.rerun()
 
 # Check Events Popup
