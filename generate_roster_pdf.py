@@ -226,6 +226,7 @@ def generate_pdf(filename="IITM_1971_Graduates_Directory.pdf"):
     try:
         doc.build(elements, onFirstPage=on_page, onLaterPages=on_page)
         print(f"Successfully generated: {filename}")
+        save_report_to_db(filename, "Photo Directory")
     except Exception as e:
         print(f"Error building PDF: {e}")
 
@@ -404,6 +405,7 @@ def generate_text_roster(filename="IITM_1971_Graduates_List.pdf"):
     try:
         doc.build(elements, onFirstPage=on_page_text, onLaterPages=on_page_text)
         print(f"Successfully generated: {filename}")
+        save_report_to_db(filename, "Text Roster")
     except Exception as e:
         print(f"Error building Text PDF: {e}")
 
@@ -479,6 +481,7 @@ def generate_memoriam_pdf(filename="IITM_1971_In_Memoriam.pdf"):
     try:
         doc.build(elements)
         print(f"Successfully generated: {filename}")
+        save_report_to_db(filename, "In Memoriam")
     except Exception as e:
         print(f"Error building Memoriam PDF: {e}")
 
@@ -534,6 +537,7 @@ def generate_missing_pdf(filename="IITM_1971_Missing_Contacts.pdf"):
     try:
         doc.build(elements)
         print(f"Successfully generated: {filename}")
+        save_report_to_db(filename, "Missing Contacts")
     except Exception as e:
         print(f"Error building Missing Contacts PDF: {e}")
 
@@ -565,10 +569,43 @@ def generate_consolidated_report(final_filename="IITM_1971_Graduates_Complete_Re
             merger.write(f_out)
             
         print(f"Successfully generated consolidated report: {final_filename}")
+        save_report_to_db(final_filename, "Complete Report")
         return final_filename
     except Exception as e:
         print(f"Error merging PDFs: {e}")
         return None
+
+def save_report_to_db(filename, report_custom_name):
+    # report_custom_name can be a friendly key, or we can use the filename as unique key
+    # Schema says `report_name VARCHAR(255) NOT NULL UNIQUE`.
+    # Let's use the filenames as unique keys (e.g. "IITM_1971_Graduates_Directory.pdf") to match app logic.
+    # But wait, app logic in previous tool call output showed custom labels but checking for filenames on disk.
+    # I'll use filename as the key.
+    
+    print(f"Saving {filename} to DB...")
+    conn = get_db_connection()
+    if not conn:
+        print("Failed to connect to DB for saving report.")
+        return
+
+    try:
+        with open(filename, 'rb') as f:
+            file_data = f.read()
+            
+        cursor = conn.cursor()
+        # Upsert logic
+        sql = """INSERT INTO reports (report_name, file_data) 
+                 VALUES (%s, %s) 
+                 ON DUPLICATE KEY UPDATE file_data=%s, created_at=NOW()"""
+        cursor.execute(sql, (filename, file_data, file_data))
+        conn.commit()
+        print(f"Saved {filename} to database.")
+    except Exception as e:
+        print(f"Error saving report to DB: {e}")
+    finally:
+        if conn and conn.is_connected():
+            cursor.close()
+            conn.close()
 
 if __name__ == "__main__":
     generate_consolidated_report()

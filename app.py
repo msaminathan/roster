@@ -77,6 +77,24 @@ except Exception as e:
     st.error(f"Error connecting to database: {e}")
     st.stop()
 
+@st.cache_data(ttl=3600)
+def get_report_from_db(report_name):
+    conn = get_db_connection()
+    if not conn: return None, None
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT file_data, created_at FROM reports WHERE report_name = %s", (report_name,))
+        row = cursor.fetchone()
+        if row:
+            return row[0], row[1] # blob, timestamp
+        return None, None
+    except Exception as e:
+        return None, None
+    finally:
+        if conn and conn.is_connected():
+            cursor.close()
+            conn.close()
+
 # Helper to verify user
 def verify_user(roll_no):
     conn = get_db_connection()
@@ -999,7 +1017,8 @@ else:
                     generate_missing_pdf("IITM_1971_Missing_Contacts.pdf")
                     
                     status.update(label="Generation Complete!", state="complete", expanded=False)
-                st.success("Reports generated successfully!")
+                st.success("Reports generated and saved to DB successfully!")
+                get_report_from_db.clear() # Clear cache
                 st.rerun()
 
         st.markdown("### Available Downloads")
@@ -1016,83 +1035,93 @@ else:
         c1, c2, c3 = st.columns(3)
         
         with c1:
-             if os.path.exists("IITM_1971_Graduates_Complete_Report.pdf"):
-                 ts = get_file_info("IITM_1971_Graduates_Complete_Report.pdf")
-                 label = f"📄 Complete Report (PDF) - [{ts}]" if ts else "📄 Complete Report (PDF)"
-                 with open("IITM_1971_Graduates_Complete_Report.pdf", "rb") as f:
-                     st.download_button(
-                         label=label,
-                         data=f,
-                         file_name="IITM_1971_Graduates_Complete_Report.pdf",
-                         mime="application/pdf",
-                         width="stretch"
-                     )
+             # Complete Report
+             rep_name = "IITM_1971_Graduates_Complete_Report.pdf"
+             data, ts = get_report_from_db(rep_name)
+             if data:
+                 ts_str = ts.strftime('%Y-%m-%d %H:%M') if ts else ""
+                 label = f"📄 Complete Report (PDF) - [{ts_str}]"
+                 st.download_button(
+                     label=label,
+                     data=data,
+                     file_name=rep_name,
+                     mime="application/pdf",
+                     width="stretch"
+                 )
              else:
-                 st.info("Complete Report not generated yet.")
+                 st.info("Complete Report not found in DB.")
 
         with c2:
-             if os.path.exists("IITM_1971_Graduates_Directory.pdf"):
-                 ts = get_file_info("IITM_1971_Graduates_Directory.pdf")
-                 label = f"🖼️ Photo Directory Only - [{ts}]" if ts else "🖼️ Photo Directory Only"
-                 with open("IITM_1971_Graduates_Directory.pdf", "rb") as f:
-                     st.download_button(
-                         label=label,
-                         data=f,
-                         file_name="IITM_1971_Graduates_Directory.pdf",
-                         mime="application/pdf",
-                         width="stretch"
-                     )
+             # Photo Directory
+             rep_name = "IITM_1971_Graduates_Directory.pdf"
+             data, ts = get_report_from_db(rep_name)
+             if data:
+                 ts_str = ts.strftime('%Y-%m-%d %H:%M') if ts else ""
+                 label = f"🖼️ Photo Directory Only - [{ts_str}]"
+                 st.download_button(
+                     label=label,
+                     data=data,
+                     file_name=rep_name,
+                     mime="application/pdf",
+                     width="stretch"
+                 )
              else:
-                 st.info("Photo Directory not generated yet.")
+                 st.info("Photo Directory not found in DB.")
 
         with c3:
-             if os.path.exists("IITM_1971_Graduates_List.pdf"):
-                 ts = get_file_info("IITM_1971_Graduates_List.pdf")
-                 label = f"📝 Text Roster Only - [{ts}]" if ts else "📝 Text Roster Only"
-                 with open("IITM_1971_Graduates_List.pdf", "rb") as f:
-                     st.download_button(
-                         label=label,
-                         data=f,
-                         file_name="IITM_1971_Graduates_List.pdf",
-                         mime="application/pdf",
-                         width="stretch"
-                     )
+             # Text Roster
+             rep_name = "IITM_1971_Graduates_List.pdf"
+             data, ts = get_report_from_db(rep_name)
+             if data:
+                 ts_str = ts.strftime('%Y-%m-%d %H:%M') if ts else ""
+                 label = f"📝 Text Roster Only - [{ts_str}]"
+                 st.download_button(
+                     label=label,
+                     data=data,
+                     file_name=rep_name,
+                     mime="application/pdf",
+                     width="stretch"
+                 )
              else:
-                 st.info("Text Roster not generated yet.")
+                 st.info("Text Roster not found in DB.")
 
         # Second Row of Downloads
         st.markdown("<br>", unsafe_allow_html=True)
         rc1, rc2 = st.columns(2)
         
         with rc1:
-             if os.path.exists("IITM_1971_In_Memoriam.pdf"):
-                 ts = get_file_info("IITM_1971_In_Memoriam.pdf")
-                 label = f"🌹 In Memoriam (PDF) - [{ts}]" if ts else "🌹 In Memoriam (PDF)"
-                 with open("IITM_1971_In_Memoriam.pdf", "rb") as f:
-                     st.download_button(
-                         label=label,
-                         data=f,
-                         file_name="IITM_1971_In_Memoriam.pdf",
-                         mime="application/pdf",
-                         width="stretch"
-                     )
+             # In Memoriam
+             rep_name = "IITM_1971_In_Memoriam.pdf"
+             data, ts = get_report_from_db(rep_name)
+             if data:
+                 ts_str = ts.strftime('%Y-%m-%d %H:%M') if ts else ""
+                 label = f"🌹 In Memoriam (PDF) - [{ts_str}]"
+                 st.download_button(
+                     label=label,
+                     data=data,
+                     file_name=rep_name,
+                     mime="application/pdf",
+                     width="stretch"
+                 )
              else:
-                 st.info("In Memoriam report not generated yet.")
+                 st.info("In Memoriam report not found in DB.")
 
         with rc2:
-             if os.path.exists("IITM_1971_Missing_Contacts.pdf"):
-                 ts = get_file_info("IITM_1971_Missing_Contacts.pdf")
-                 label = f"🔍 Missing Contacts (PDF) - [{ts}]" if ts else "🔍 Missing Contacts (PDF)"
-                 with open("IITM_1971_Missing_Contacts.pdf", "rb") as f:
-                     st.download_button(
-                         label=label,
-                         data=f,
-                         file_name="IITM_1971_Missing_Contacts.pdf",
-                         mime="application/pdf",
-                         width="stretch"
-                     )
+             # Missing Contacts
+             rep_name = "IITM_1971_Missing_Contacts.pdf"
+             data, ts = get_report_from_db(rep_name)
+             if data:
+                 ts_str = ts.strftime('%Y-%m-%d %H:%M') if ts else ""
+                 label = f"🔍 Missing Contacts (PDF) - [{ts_str}]"
+                 st.download_button(
+                     label=label,
+                     data=data,
+                     file_name=rep_name,
+                     mime="application/pdf",
+                     width="stretch"
+                 )
              else:
-                 st.info("Missing Contacts report not generated yet.")
+                 st.info("Missing Contacts report not found in DB.")
 
     elif view_mode == "About this App":
         st.header("🚀 Building the Class of '71 Roster App")
