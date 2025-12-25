@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 import datetime
 import os
 from dotenv import load_dotenv
-from generate_roster_pdf import generate_pdf, generate_text_roster, generate_consolidated_report # Import generation functions
+from generate_roster_pdf import generate_pdf, generate_text_roster, generate_consolidated_report, generate_memoriam_pdf, generate_missing_pdf # Import generation functions
 from sqlalchemy import create_engine, text
 
 # Load environment variables
@@ -322,7 +322,7 @@ elif view_mode == "In Memoriam":
 
 
 # Update Function
-def update_graduate(id, name, roll_no, hostel, dob, wad, lives_in, state, email, phone, branch, new_photo_bytes=None):
+def update_graduate(id, name, roll_no, hostel, dob, wad, spouse_name, lives_in, state, email, phone, branch, new_photo_bytes=None):
     conn = get_db_connection()
     if not conn:
         st.error("Database connection failed")
@@ -333,15 +333,15 @@ def update_graduate(id, name, roll_no, hostel, dob, wad, lives_in, state, email,
     if new_photo_bytes:
         # Update with photo
         sql = """UPDATE graduates 
-                 SET name=%s, roll_no=%s, hostel=%s, dob=%s, wad=%s, lives_in=%s, state=%s, email=%s, phone=%s, branch=%s, photo_current=%s 
+                 SET name=%s, roll_no=%s, hostel=%s, dob=%s, wad=%s, spouse_name=%s, lives_in=%s, state=%s, email=%s, phone=%s, branch=%s, photo_current=%s 
                  WHERE id=%s"""
-        val = (name, roll_no, hostel, dob, wad, lives_in, state, email, phone, branch, new_photo_bytes, id)
+        val = (name, roll_no, hostel, dob, wad, spouse_name, lives_in, state, email, phone, branch, new_photo_bytes, id)
     else:
         # Update without photo
         sql = """UPDATE graduates 
-                 SET name=%s, roll_no=%s, hostel=%s, dob=%s, wad=%s, lives_in=%s, state=%s, email=%s, phone=%s, branch=%s 
+                 SET name=%s, roll_no=%s, hostel=%s, dob=%s, wad=%s, spouse_name=%s, lives_in=%s, state=%s, email=%s, phone=%s, branch=%s 
                  WHERE id=%s"""
-        val = (name, roll_no, hostel, dob, wad, lives_in, state, email, phone, branch, id)
+        val = (name, roll_no, hostel, dob, wad, spouse_name, lives_in, state, email, phone, branch, id)
         
     try:
         cursor.execute(sql, val)
@@ -364,6 +364,7 @@ def edit_dialog(row):
         hostel = st.text_input("Hostel", value=row['hostel'] if row['hostel'] else "")
         dob = st.text_input("DOB", value=row['dob'] if row['dob'] else "")
         wad = st.text_input("WAD", value=row['wad'] if row['wad'] else "")
+        spouse_name = st.text_input("Spouse Name", value=row['spouse_name'] if row.get('spouse_name') else "")
         lives_in = st.text_input("Lives In", value=row['lives_in'] if row['lives_in'] else "")
         
         c1, c2 = st.columns(2)
@@ -381,7 +382,7 @@ def edit_dialog(row):
         
         if st.form_submit_button("Save Changes"):
             photo_bytes = uploaded_file.getvalue() if uploaded_file else None
-            update_graduate(row['id'], name, roll_no, hostel, dob, wad, lives_in, state, email, phone, branch, photo_bytes)
+            update_graduate(row['id'], name, roll_no, hostel, dob, wad, spouse_name, lives_in, state, email, phone, branch, photo_bytes)
 
 # Main Grid
 if filtered_df.empty:
@@ -392,9 +393,9 @@ else:
     <style>
     .graduate-card {
         background-color: #f0f2f6;
-        padding: 20px;
+        padding: 10px;
         border-radius: 10px;
-        margin-bottom: 20px;
+        margin-bottom: 10px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
     .graduate-name {
@@ -458,8 +459,8 @@ else:
                     with st.expander("View Details"):
                         st.text(f"Hostel: {row['hostel']}")
                         st.text(f"DOB: {row['dob']}")
-                        if row['wad']:
-                             st.text(f"WAD: {row['wad']}")
+                        st.text(f"WAD: {row['wad'] if row['wad'] else '-'}")
+                        st.text(f"Spouse: {row.get('spouse_name') if row.get('spouse_name') else '-'}")
                         st.text(f"Lives in: {row['lives_in']}, {row['state']}")
                         if row['email']:
                             st.markdown(f"📧 [{row['email']}](mailto:{row['email']})")
@@ -976,6 +977,10 @@ else:
                     
                     st.write("Processing Data & Images...")
                     generate_consolidated_report("IITM_1971_Graduates_Complete_Report.pdf")
+                    st.write("Generating In Memoriam Report...")
+                    generate_memoriam_pdf("IITM_1971_In_Memoriam.pdf")
+                    st.write("Generating Missing Contacts Report...")
+                    generate_missing_pdf("IITM_1971_Missing_Contacts.pdf")
                     
                     status.update(label="Generation Complete!", state="complete", expanded=False)
                 st.success("Reports generated successfully!")
@@ -1038,6 +1043,40 @@ else:
                      )
              else:
                  st.info("Text Roster not generated yet.")
+
+        # Second Row of Downloads
+        st.markdown("<br>", unsafe_allow_html=True)
+        rc1, rc2 = st.columns(2)
+        
+        with rc1:
+             if os.path.exists("IITM_1971_In_Memoriam.pdf"):
+                 ts = get_file_info("IITM_1971_In_Memoriam.pdf")
+                 label = f"🌹 In Memoriam (PDF) - [{ts}]" if ts else "🌹 In Memoriam (PDF)"
+                 with open("IITM_1971_In_Memoriam.pdf", "rb") as f:
+                     st.download_button(
+                         label=label,
+                         data=f,
+                         file_name="IITM_1971_In_Memoriam.pdf",
+                         mime="application/pdf",
+                         width="stretch"
+                     )
+             else:
+                 st.info("In Memoriam report not generated yet.")
+
+        with rc2:
+             if os.path.exists("IITM_1971_Missing_Contacts.pdf"):
+                 ts = get_file_info("IITM_1971_Missing_Contacts.pdf")
+                 label = f"🔍 Missing Contacts (PDF) - [{ts}]" if ts else "🔍 Missing Contacts (PDF)"
+                 with open("IITM_1971_Missing_Contacts.pdf", "rb") as f:
+                     st.download_button(
+                         label=label,
+                         data=f,
+                         file_name="IITM_1971_Missing_Contacts.pdf",
+                         mime="application/pdf",
+                         width="stretch"
+                     )
+             else:
+                 st.info("Missing Contacts report not generated yet.")
 
     elif view_mode == "About this App":
         st.header("🚀 Building the Class of '71 Roster App")

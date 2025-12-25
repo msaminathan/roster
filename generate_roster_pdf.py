@@ -5,7 +5,7 @@ from PIL import Image as PILImage
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter, landscape
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Image, Paragraph, Spacer, PageBreak
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 import matplotlib.pyplot as plt
 from pypdf import PdfWriter
@@ -406,6 +406,137 @@ def generate_text_roster(filename="IITM_1971_Graduates_List.pdf"):
         print(f"Successfully generated: {filename}")
     except Exception as e:
         print(f"Error building Text PDF: {e}")
+
+def generate_memoriam_pdf(filename="IITM_1971_In_Memoriam.pdf"):
+    print(f"Generating In Memoriam PDF: {filename}")
+    conn = get_db_connection()
+    if not conn: return
+    
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM memoriam ORDER BY name")
+    rows = cursor.fetchall()
+    conn.close()
+    
+    doc = SimpleDocTemplate(filename, pagesize=letter,
+                            topMargin=0.75*inch, bottomMargin=0.75*inch, leftMargin=0.75*inch, rightMargin=0.75*inch)
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    # Custom Title with styling
+    title_style = ParagraphStyle(
+        'MemoriamTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        alignment=1, # Center
+        spaceAfter=0.5*inch,
+        textColor=colors.darkslategrey
+    )
+    
+    # Adding a simple textual flower decoration
+    elements.append(Paragraph("🌹 In Memoriam 🌹", title_style))
+    elements.append(Paragraph("Remembering our dear batchmates", styles['Italic']))
+    elements.append(Spacer(1, 0.3*inch))
+    
+    if not rows:
+        elements.append(Paragraph("No records found.", styles['Normal']))
+    else:
+        # Layout: List with Photo on left, text on right
+        for row in rows:
+            # Card Container
+            data = []
+            
+            # Photo
+            img = get_image_from_blob(row['photo'], max_width=1.5*inch, max_height=1.8*inch)
+            if not img:
+                # Placeholder text if no image, or empty cell
+                img = Paragraph("No Photo", styles['Normal'])
+                
+            # Text Details
+            name = row['name'] if row['name'] else "Unknown"
+            branch = row['branch'] if row['branch'] else ""
+            roll = row['roll_no'] if row['roll_no'] else ""
+            
+            p_text = f"<b>{name}</b><br/><br/>"
+            if branch: p_text += f"{branch}<br/>"
+            if roll: p_text += f"Roll No: {roll}"
+            
+            data.append([img, Paragraph(p_text, styles['BodyText'])])
+            
+            t = Table(data, colWidths=[2.0*inch, 4.5*inch])
+            t.setStyle(TableStyle([
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('LEFTPADDING', (0,0), (-1,-1), 10),
+                ('RIGHTPADDING', (0,0), (-1,-1), 10),
+                ('TOPPADDING', (0,0), (-1,-1), 10),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 10),
+                ('BOX', (0,0), (-1,-1), 1, colors.lightgrey),
+                ('ROUNDEDCORNERS', [10, 10, 10, 10]), # Rounded corners if supported, else ignored usually
+            ]))
+            
+            elements.append(t)
+            elements.append(Spacer(1, 0.15*inch))
+
+    try:
+        doc.build(elements)
+        print(f"Successfully generated: {filename}")
+    except Exception as e:
+        print(f"Error building Memoriam PDF: {e}")
+
+def generate_missing_pdf(filename="IITM_1971_Missing_Contacts.pdf"):
+    print(f"Generating Missing Contacts PDF: {filename}")
+    conn = get_db_connection()
+    if not conn: return
+    
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM tracked ORDER BY branch, name")
+    rows = cursor.fetchall()
+    conn.close()
+    
+    doc = SimpleDocTemplate(filename, pagesize=letter,
+                            topMargin=0.75*inch, bottomMargin=0.75*inch, leftMargin=0.75*inch, rightMargin=0.75*inch)
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    title_style = styles['Heading1']
+    title_style.alignment = 1
+    
+    elements.append(Paragraph("Missing Contacts / Yet to Track", title_style))
+    elements.append(Spacer(1, 0.2*inch))
+    
+    if not rows:
+        elements.append(Paragraph("No records found.", styles['Normal']))
+    else:
+        # Table Header
+        headers = ['Photo', 'Name', 'Branch', 'Roll No']
+        data = [headers]
+        
+        for row in rows:
+            # Photo (Small)
+            img = get_image_from_blob(row['photo'], max_width=0.8*inch, max_height=1.0*inch)
+            
+            name = row['name'] if row['name'] else ""
+            branch = row['branch'] if row['branch'] else ""
+            roll = row['roll_no'] if row['roll_no'] else ""
+            
+            data.append([img if img else "", name, branch, roll])
+            
+        t = Table(data, colWidths=[1.0*inch, 2.5*inch, 2.0*inch, 1.5*inch], repeatRows=1)
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
+            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ]))
+        
+        elements.append(t)
+
+    try:
+        doc.build(elements)
+        print(f"Successfully generated: {filename}")
+    except Exception as e:
+        print(f"Error building Missing Contacts PDF: {e}")
+
 
 def generate_consolidated_report(final_filename="IITM_1971_Graduates_Complete_Report.pdf"):
     print("Generating consolidated report...")
