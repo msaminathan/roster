@@ -322,31 +322,32 @@ if show_total_shown:
 </tr>"""
 
 # Custom Stats Table
+# Custom Stats Table
 st.sidebar.markdown(f"""
 <div style="font-family: sans-serif; font-size: 0.9em;">
-    <table style="width:100%; border-collapse: collapse; color: #333;">
-        <tr style="border-bottom: 1px solid #ddd;">
-            <td style="padding: 5px; font-weight: bold;">Category</td>
-            <td style="padding: 5px; text-align: right; font-weight: bold;">Count</td>
-        </tr>
-        <tr>
-            <td style="padding: 5px;">🎓 Graduates</td>
-            <td style="padding: 5px; text-align: right;">{grad_count}</td>
-        </tr>
-        <tr>
-            <td style="padding: 5px;">🌹 In Memoriam</td>
-            <td style="padding: 5px; text-align: right;">{memoriam_count}</td>
-        </tr>
-        <tr>
-            <td style="padding: 5px;">🔍 Yet to Track</td>
-            <td style="padding: 5px; text-align: right;">{tracked_count}</td>
-        </tr>
-        <tr style="border-top: 2px solid #555; background-color: #f0f2f6;">
-            <td style="padding: 5px; font-weight: bold;">Grand Total</td>
-            <td style="padding: 5px; text-align: right; font-weight: bold;">{grand_total}</td>
-        </tr>
-        {total_shown_row}
-    </table>
+<table style="width:100%; border-collapse: collapse; color: #333;">
+<tr style="border-bottom: 1px solid #ddd;">
+<td style="padding: 5px; font-weight: bold;">Category</td>
+<td style="padding: 5px; text-align: right; font-weight: bold;">Count</td>
+</tr>
+<tr>
+<td style="padding: 5px;">🎓 Graduates</td>
+<td style="padding: 5px; text-align: right;">{grad_count}</td>
+</tr>
+<tr>
+<td style="padding: 5px;">🌹 In Memoriam</td>
+<td style="padding: 5px; text-align: right;">{memoriam_count}</td>
+</tr>
+<tr>
+<td style="padding: 5px;">🔍 Yet to Track</td>
+<td style="padding: 5px; text-align: right;">{tracked_count}</td>
+</tr>
+<tr style="border-top: 2px solid #555; background-color: #f0f2f6;">
+<td style="padding: 5px; font-weight: bold;">Grand Total</td>
+<td style="padding: 5px; text-align: right; font-weight: bold;">{grand_total}</td>
+</tr>
+{total_shown_row}
+</table>
 </div>
 <br>
 """, unsafe_allow_html=True)
