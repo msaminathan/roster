@@ -282,6 +282,28 @@ tracked_count = get_table_count("tracked")
 grand_total = grad_count + memoriam_count + tracked_count
 
 # Custom Stats Table
+# Calculate Total Shown
+total_shown = 0
+show_total_shown = False
+if view_mode in ["Grid View", "List View", "Table (Text)", "Table (with Icons)"]:
+    total_shown = len(filtered_df)
+    show_total_shown = True
+elif view_mode == "Missing Contacts":
+    total_shown = tracked_count
+    show_total_shown = True
+elif view_mode == "In Memoriam":
+    total_shown = memoriam_count
+    show_total_shown = True
+
+total_shown_row = ""
+if show_total_shown:
+    total_shown_row = f"""
+<tr style="background-color: #f0f2f6;">
+<td style="padding: 5px; font-weight: bold;">Total Shown</td>
+<td style="padding: 5px; text-align: right; font-weight: bold;">{total_shown}</td>
+</tr>"""
+
+# Custom Stats Table
 st.sidebar.markdown(f"""
 <div style="font-family: sans-serif; font-size: 0.9em;">
     <table style="width:100%; border-collapse: collapse; color: #333;">
@@ -305,17 +327,11 @@ st.sidebar.markdown(f"""
             <td style="padding: 5px; font-weight: bold;">Grand Total</td>
             <td style="padding: 5px; text-align: right; font-weight: bold;">{grand_total}</td>
         </tr>
+        {total_shown_row}
     </table>
 </div>
 <br>
 """, unsafe_allow_html=True)
-
-if view_mode in ["Grid View", "List View", "Table (Text)", "Table (with Icons)"]:
-    st.sidebar.metric("Total Shown", len(filtered_df))
-elif view_mode == "Missing Contacts":
-    st.sidebar.metric("Total Shown", tracked_count)
-elif view_mode == "In Memoriam":
-    st.sidebar.metric("Total Shown", memoriam_count)
 
 
 
