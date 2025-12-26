@@ -519,6 +519,7 @@ else:
     """, unsafe_allow_html=True)
 
     if view_mode == "Grid View":
+        st.info("Note: You can edit only your own details by clicking the edit icon (✏️) on your card.")
         # Grid Layout
         cols = st.columns(3) # 3 columns grid
         
@@ -569,6 +570,7 @@ else:
                             st.text(f"📞 {row['phone']}")
 
     elif view_mode == "List View":
+        st.info("Note: You can edit only your own details by clicking the edit icon (✏️) in your row.")
         # List View Layout
         for idx, row in filtered_df.iterrows():
             with st.container(border=True):
@@ -601,6 +603,7 @@ else:
 
     elif view_mode == "Table (Text)":
         st.subheader("Tabular View (Text Only)")
+        st.info("Note: You can edit only your own row, marked by the edit symbol (✏️). Please select the checkbox for your row to edit.")
         
         # Cols to show
         cols_to_show = ['id', 'name', 'roll_no', 'branch', 'hostel', 'lives_in', 'state', 'email', 'phone']
@@ -609,8 +612,9 @@ else:
         # Create Dataframe for display
         df_view = filtered_df[cols_final].copy()
         
-        # Add visual "Edit" column
-        df_view.insert(0, "Edit", "✏️")
+        # Add visual "Edit" column conditionally
+        current_user_roll = st.session_state['user_info']['roll_no']
+        df_view.insert(0, "Edit", df_view['roll_no'].apply(lambda x: "✏️" if x == current_user_roll else ""))
         
         # Apply Styling
         # Note: We need 'roll_no' in the dataframe to check user
@@ -654,6 +658,7 @@ else:
 
     elif view_mode == "Table (with Icons)":
         st.subheader("Tabular View (with Photos)")
+        st.info("Note: You can edit only your own row, marked by the edit symbol (✏️). Please select the checkbox for your row to edit.")
         
         # Prepare data with base64 images
         df_display = filtered_df.copy()
@@ -680,8 +685,9 @@ else:
             
         df_view_icons = df_display[cols_icons].copy()
         
-        # Add visual "Edit" column
-        df_view_icons.insert(0, "Edit", "✏️")
+        # Add visual "Edit" column conditionally
+        current_user_roll = st.session_state['user_info']['roll_no']
+        df_view_icons.insert(0, "Edit", df_view_icons['roll_no'].apply(lambda x: "✏️" if x == current_user_roll else ""))
         
         styled_df_icons = df_view_icons.style.apply(highlight_user, axis=1)
         
