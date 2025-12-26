@@ -233,6 +233,8 @@ if 'logged_in' not in st.session_state:
     st.session_state['log_id'] = None
 if 'show_popup' not in st.session_state:
     st.session_state['show_popup'] = False
+if 'table_key' not in st.session_state:
+    st.session_state['table_key'] = 0
 
 # Title with Image (Always visible header)
 c_img, c_title = st.columns([1, 5])
@@ -440,6 +442,18 @@ def update_graduate(id, name, roll_no, hostel, dob, wad, spouse_name, lives_in, 
         cursor.close()
         conn.close()
 
+# Helper removed: save_changes_from_editor (Replaced by per-row Edit Dialog)
+
+# Helper to highlight user row
+def highlight_user(row):
+    try:
+        if st.session_state['user_info']['roll_no'] == row['roll_no']:
+            return ['background-color: lightyellow'] * len(row)
+        else:
+            return [''] * len(row)
+    except:
+        return [''] * len(row)
+
 # Edit Dialog
 @st.dialog("Edit Graduate Details")
 def edit_dialog(row):
@@ -467,8 +481,9 @@ def edit_dialog(row):
         uploaded_file = st.file_uploader("Choose a new Current Photo", type=['jpg', 'jpeg', 'png'])
         
         if st.form_submit_button("Save Changes"):
+            st.session_state['table_key'] += 1 # Force reset of filtered table views
             photo_bytes = uploaded_file.getvalue() if uploaded_file else None
-            update_graduate(row['id'], name, roll_no, hostel, dob, wad, spouse_name, lives_in, state, email, phone, branch, photo_bytes)
+            update_graduate(int(row['id']), name, roll_no, hostel, dob, wad, spouse_name, lives_in, state, email, phone, branch, photo_bytes)
 
 # Main Grid
 if filtered_df.empty:
@@ -586,10 +601,56 @@ else:
 
     elif view_mode == "Table (Text)":
         st.subheader("Tabular View (Text Only)")
-        cols_to_show = ['name', 'roll_no', 'branch', 'hostel', 'lives_in', 'state', 'email', 'phone']
-        # Filter existing columns
+        
+        # Cols to show
+        cols_to_show = ['id', 'name', 'roll_no', 'branch', 'hostel', 'lives_in', 'state', 'email', 'phone']
         cols_final = [c for c in cols_to_show if c in filtered_df.columns]
-        st.dataframe(filtered_df[cols_final], hide_index=True)
+        
+        # Create Dataframe for display
+        df_view = filtered_df[cols_final].copy()
+        
+        # Add visual "Edit" column
+        df_view.insert(0, "Edit", "✏️")
+        
+        # Apply Styling
+        # Note: We need 'roll_no' in the dataframe to check user
+        # 'roll_no' is already in cols_final
+        
+        styled_df = df_view.style.apply(highlight_user, axis=1)
+
+        event = st.dataframe(
+            styled_df,
+            hide_index=True,
+            column_config={
+                "id": None, # Hide ID
+                "Edit": st.column_config.Column("Edit", width="small", help="Click row to edit")
+            },
+            on_select="rerun",
+            selection_mode="single-row",
+            key=f"text_df_{st.session_state['table_key']}"
+        )
+        
+        # Handle Selection
+        if len(event.selection.rows) > 0:
+            selected_row_index = event.selection.rows[0]
+            # Get the exact row from the *displayed* dataframe (df_view)
+            # df_view has same index as styled_df if we didn't reset index? 
+            # filtered_df might have gaps in index. 
+            # st.dataframe preserves index or resets? 
+            # "The selection.rows property contains a list of the integers of the selected rows." - These act as positional indices (0-based) relative to the displayed data.
+            # So we use iloc on df_view.
+            
+            selected_row = df_view.iloc[selected_row_index]
+            
+            # Fetch full row using ID for editing
+            full_row = filtered_df[filtered_df['id'] == selected_row['id']].iloc[0]
+
+            # Verify User
+            current_user_roll = st.session_state['user_info']['roll_no']
+            if current_user_roll == full_row['roll_no']:
+                 edit_dialog(full_row)
+            else:
+                 st.warning(f"You can only edit your own details (Roll No: {current_user_roll}).")
 
     elif view_mode == "Table (with Icons)":
         st.subheader("Tabular View (with Photos)")
@@ -607,14 +668,28 @@ else:
         df_display['photo_1966_uri'] = df_display['photo_1966'].apply(blob_to_uri)
         df_display['photo_current_uri'] = df_display['photo_current'].apply(blob_to_uri)
         
-        cols_icons = ['photo_1966_uri', 'photo_current_uri', 'name', 'roll_no', 'branch', 'hostel', 'lives_in', 'email']
+        # Include ID
+        cols_icons = ['id', 'photo_1966_uri', 'photo_current_uri', 'name', 'roll_no', 'branch', 'hostel', 'lives_in', 'email']
         
         # Filter to ensure columns exist
         cols_icons = [c for c in cols_icons if c in df_display.columns]
 
-        st.dataframe(
-            df_display[cols_icons],
+        if 'roll_no' not in cols_icons: 
+            # Should be there, but just in case
+            pass 
+            
+        df_view_icons = df_display[cols_icons].copy()
+        
+        # Add visual "Edit" column
+        df_view_icons.insert(0, "Edit", "✏️")
+        
+        styled_df_icons = df_view_icons.style.apply(highlight_user, axis=1)
+        
+        event_icons = st.dataframe(
+            styled_df_icons,
             column_config={
+                "id": None,
+                "Edit": st.column_config.Column("Edit", width="small", help="Click row to edit"),
                 "photo_1966_uri": st.column_config.ImageColumn("1966 Photo", width="small"),
                 "photo_current_uri": st.column_config.ImageColumn("Current Photo", width="small"),
                 "name": "Name",
@@ -624,8 +699,24 @@ else:
                 "lives_in": "Lives In",
                 "email": "Email"
             },
-            hide_index=True
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row",
+            key=f"icon_df_{st.session_state['table_key']}"
         )
+
+        if len(event_icons.selection.rows) > 0:
+            selected_row_index_icons = event_icons.selection.rows[0]
+            selected_row_icons = df_view_icons.iloc[selected_row_index_icons]
+            
+            full_row = filtered_df[filtered_df['id'] == selected_row_icons['id']].iloc[0]
+            
+            current_user_roll = st.session_state['user_info']['roll_no']
+            
+            if current_user_roll == full_row['roll_no']:
+                 edit_dialog(full_row)
+            else:
+                 st.warning(f"You can only edit your own details (Roll No: {current_user_roll}).")
 
     elif view_mode == "Statistics":
         st.header("🎓 Statistics & Pareto Charts")
