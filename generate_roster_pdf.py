@@ -577,46 +577,136 @@ def generate_missing_pdf(filename="IITM_1971_Missing_Contacts.pdf"):
     conn.close()
     
     doc = SimpleDocTemplate(filename, pagesize=letter,
-                            topMargin=0.75*inch, bottomMargin=0.75*inch, leftMargin=0.75*inch, rightMargin=0.75*inch)
+                            topMargin=0.5*inch, bottomMargin=0.75*inch, leftMargin=0.5*inch, rightMargin=0.5*inch)
     elements = []
     styles = getSampleStyleSheet()
     
-    title_style = styles['Heading1']
-    title_style.alignment = 1
+    # --- Header with Compass and Telescope ---
+    compass_img = "missing_compass.png"
+    telescope_img = "missing_telescope.png"
     
-    elements.append(Paragraph("Missing Contacts / Yet to Track", title_style))
+    img_compass = Image(compass_img, width=1.5*inch, height=1.5*inch) if os.path.exists(compass_img) else Paragraph("", styles['Normal'])
+    img_telescope = Image(telescope_img, width=1.5*inch, height=1.5*inch) if os.path.exists(telescope_img) else Paragraph("", styles['Normal'])
+    
+    title_style = ParagraphStyle(
+        'MissingTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        alignment=1, # Center
+        textColor=colors.darkblue
+    )
+    title_text = Paragraph("Help Us Connect<br/><font size=12 color=black>Missing / Yet to Track</font>", title_style)
+    
+    header_table = Table([[img_compass, title_text, img_telescope]], colWidths=[2*inch, 3.5*inch, 2*inch])
+    header_table.setStyle(TableStyle([
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+    ]))
+    elements.append(header_table)
     elements.append(Spacer(1, 0.2*inch))
     
+    # --- Footer Callback ---
+    def on_page_missing(canvas, doc):
+        canvas.saveState()
+        canvas.setFont('Helvetica', 9)
+        from datetime import datetime
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+        
+        # Page Number (Center)
+        canvas.drawCentredString(letter[0]/2, 0.4*inch, f"Page {doc.page} | Generated: {current_time}")
+        canvas.restoreState()
+
     if not rows:
         elements.append(Paragraph("No records found.", styles['Normal']))
     else:
-        # Table Header
-        headers = ['Photo', 'Name', 'Branch', 'Roll No']
-        data = [headers]
+        # Layout: Tight Grid by Branch (Similar logic to Memoriam)
+        # 3 Columns for missing contacts to be very tight?
+        # Page width 7.5 inch usable. 2.5 inch per col.
+        # Content: Photo (tiny), Name, Roll.
+        
+        grid_data = []
+        current_row = []
+        current_branch = None
+        
+        cols_per_row = 3
+        col_width = 2.5*inch
         
         for row in rows:
-            # Photo (Small)
-            img = get_image_from_blob(row['photo'], max_width=0.8*inch, max_height=1.0*inch)
+            # Branch Header Check
+            b_name = row['branch'] if row['branch'] else "Unknown Branch"
             
-            name = row['name'] if row['name'] else ""
-            branch = row['branch'] if row['branch'] else ""
+            if b_name != current_branch:
+                # Flush current row
+                if len(current_row) > 0:
+                    while len(current_row) < cols_per_row:
+                        current_row.append("")
+                    grid_data.append(current_row)
+                    current_row = []
+                
+                # Add Branch Separator (Full Width marker)
+                current_branch = b_name
+                grid_data.append([f"BRANCH_HEADER:{b_name}"])
+                
+            # Item Content
+            img = get_image_from_blob(row['photo'], max_width=0.8*inch, max_height=1.0*inch)
+            if not img: img = Paragraph("No Photo", styles['Normal'])
+            
+            name = row['name'] if row['name'] else "Unknown"
             roll = row['roll_no'] if row['roll_no'] else ""
             
-            data.append([img if img else "", name, branch, roll])
+            text = f"<b>{name}</b><br/><font size=9>{roll}</font>"
             
-        t = Table(data, colWidths=[1.0*inch, 2.5*inch, 2.0*inch, 1.5*inch], repeatRows=1)
-        t.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
-            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
-            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ]))
+            # Mini table for the item: Image left, Text right
+            item_table = Table([[img, Paragraph(text, styles['Normal'])]], colWidths=[0.9*inch, 1.5*inch])
+            item_table.setStyle(TableStyle([
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('LEFTPADDING', (0,0), (-1,-1), 0),
+            ]))
+            
+            current_row.append(item_table)
+            
+            if len(current_row) == cols_per_row:
+                grid_data.append(current_row)
+                current_row = []
+                
+        # Flush final
+        if len(current_row) > 0:
+            while len(current_row) < cols_per_row:
+                current_row.append("")
+            grid_data.append(current_row)
+            
+        # Build Main Table
+        final_data = []
+        table_styles = [
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('LEFTPADDING', (0,0), (-1,-1), 4),
+            ('RIGHTPADDING', (0,0), (-1,-1), 4),
+            ('TOPPADDING', (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.lightgrey),
+        ]
         
+        row_idx = 0
+        for r_data in grid_data:
+            if len(r_data) == 1 and isinstance(r_data[0], str) and r_data[0].startswith("BRANCH_HEADER:"):
+                b_title = r_data[0].split(":", 1)[1]
+                # Header Row
+                final_data.append([Paragraph(b_title, styles['Heading3'])] + [''] * (cols_per_row - 1))
+                
+                # Span
+                table_styles.append(('SPAN', (0, row_idx), (-1, row_idx)))
+                table_styles.append(('BACKGROUND', (0, row_idx), (-1, row_idx), colors.aliceblue))
+                table_styles.append(('ALIGN', (0, row_idx), (-1, row_idx), 'LEFT'))
+            else:
+                final_data.append(r_data)
+            row_idx += 1
+            
+        t = Table(final_data, colWidths=[col_width]*cols_per_row)
+        t.setStyle(TableStyle(table_styles))
         elements.append(t)
 
     try:
-        doc.build(elements)
+        doc.build(elements, onFirstPage=on_page_missing, onLaterPages=on_page_missing)
         print(f"Successfully generated: {filename}")
         save_report_to_db(filename, "Missing Contacts")
     except Exception as e:
