@@ -415,68 +415,149 @@ def generate_memoriam_pdf(filename="IITM_1971_In_Memoriam.pdf"):
     if not conn: return
     
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM memoriam ORDER BY name")
+    cursor.execute("SELECT * FROM memoriam ORDER BY branch, name")
     rows = cursor.fetchall()
     conn.close()
     
     doc = SimpleDocTemplate(filename, pagesize=letter,
-                            topMargin=0.75*inch, bottomMargin=0.75*inch, leftMargin=0.75*inch, rightMargin=0.75*inch)
+                            topMargin=0.5*inch, bottomMargin=0.5*inch, leftMargin=0.5*inch, rightMargin=0.5*inch)
     elements = []
     styles = getSampleStyleSheet()
     
-    # Custom Title with styling
+    # Header with Images
+    # We will use a Table for the header to place Flower L, Title C, Dove R
+    header_data = []
+    
+    # Load decorative images
+    flower_img = "memoriam_flower.png"
+    dove_img = "memoriam_dove.png"
+    
+    img_flower = Image(flower_img, width=1.5*inch, height=1.5*inch) if os.path.exists(flower_img) else Paragraph("", styles['Normal'])
+    img_dove = Image(dove_img, width=1.5*inch, height=1.5*inch) if os.path.exists(dove_img) else Paragraph("", styles['Normal'])
+    
+    # Title
     title_style = ParagraphStyle(
         'MemoriamTitle',
         parent=styles['Heading1'],
-        fontSize=24,
+        fontSize=28,
         alignment=1, # Center
-        spaceAfter=0.5*inch,
-        textColor=colors.darkslategrey
+        textColor=colors.darkslategrey,
+        fontName='Helvetica-Oblique'
     )
+    title_text = Paragraph("In Memoriam<br/><font size=14>Forever in our hearts</font>", title_style)
     
-    # Adding a simple textual flower decoration
-    elements.append(Paragraph("🌹 In Memoriam 🌹", title_style))
-    elements.append(Paragraph("Remembering our dear batchmates", styles['Italic']))
-    elements.append(Spacer(1, 0.3*inch))
+    header_table = Table([[img_flower, title_text, img_dove]], colWidths=[2*inch, 3.5*inch, 2*inch])
+    header_table.setStyle(TableStyle([
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+    ]))
+    elements.append(header_table)
+    elements.append(Spacer(1, 0.2*inch))
     
     if not rows:
         elements.append(Paragraph("No records found.", styles['Normal']))
     else:
-        # Layout: List with Photo on left, text on right
+        # Layout: Tight Table
+        # Group by Branch for section headers? User said "tight bt branch ascending". 
+        # Usually implies grouping or at least sorting.
+        # Let's do a single table for compactness, but maybe add a subheader row for each branch change?
+        # Or just a list. Let's do a table where we can have multiple columns if possible, but rows with Photo+Text is classic.
+        # To make it "tight", we can reduce padding and maybe put 2 grads per row?
+        # Let's try 2 grads per row for compactness if they fit. 
+        # Page width ~ 8.5 inch. Margins 0.5+0.5 = 1. Used 7.5.
+        # Check col widths. 3.75 inch per cell.
+        
+        # Preparing data for 2-column grid
+        grid_data = []
+        current_row = []
+        
+        # Branch Grouping Logic
+        current_branch = None
+        
         for row in rows:
-            # Card Container
-            data = []
+            # Check branch change
+            b_name = row['branch'] if row['branch'] else "Unknown Branch"
             
-            # Photo
-            img = get_image_from_blob(row['photo'], max_width=1.5*inch, max_height=1.8*inch)
-            if not img:
-                # Placeholder text if no image, or empty cell
-                img = Paragraph("No Photo", styles['Normal'])
+            if b_name != current_branch:
+                 # If we have a pending row with 1 item, pad it
+                if len(current_row) > 0:
+                    current_row.append("") # Empty cell
+                    grid_data.append(current_row)
+                    current_row = []
                 
-            # Text Details
+                # Add Branch Header
+                current_branch = b_name
+                # Span across 2 columns
+                # We defer creating Table until end, or we add a special row. 
+                # Doing all in one table is tricky with colspans dynamic.
+                # Easier: Add a row that says "Branch: X" in bold, spanning?
+                # Actually, reportlab table allows span.
+                # But treating data as grid is easier.
+                
+                # Let's just insert a full width row for branch header
+                # We'll handle visual span in TableStyle later or just put it in first cell and let it overflow? No.
+                # Let's add a special marker tuple?
+                grid_data.append([f"BRANCH_HEADER:{b_name}"]) 
+                
+            # Content Cell
+            img = get_image_from_blob(row['photo'], max_width=1.0*inch, max_height=1.2*inch)
+            if not img: img = Paragraph("No Photo", styles['Normal'])
+            
             name = row['name'] if row['name'] else "Unknown"
-            branch = row['branch'] if row['branch'] else ""
             roll = row['roll_no'] if row['roll_no'] else ""
             
-            p_text = f"<b>{name}</b><br/><br/>"
-            if branch: p_text += f"{branch}<br/>"
-            if roll: p_text += f"Roll No: {roll}"
+            # Tight text
+            p_text = f"<b>{name}</b><br/>"
+            if roll: p_text += f"{roll}<br/>"
             
-            data.append([img, Paragraph(p_text, styles['BodyText'])])
-            
-            t = Table(data, colWidths=[2.0*inch, 4.5*inch])
-            t.setStyle(TableStyle([
+            # Inner Table for Cell (Photo Left, Text Right) or Stacked?
+            # Side by side in the cell.
+            cell_inner = Table([[img, Paragraph(p_text, styles['Normal'])]], colWidths=[1.1*inch, 2.4*inch])
+            cell_inner.setStyle(TableStyle([
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('LEFTPADDING', (0,0), (-1,-1), 10),
-                ('RIGHTPADDING', (0,0), (-1,-1), 10),
-                ('TOPPADDING', (0,0), (-1,-1), 10),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 10),
-                ('BOX', (0,0), (-1,-1), 1, colors.lightgrey),
-                ('ROUNDEDCORNERS', [10, 10, 10, 10]), # Rounded corners if supported, else ignored usually
+                ('LEFTPADDING', (0,0), (-1,-1), 0),
+                ('RIGHTPADDING', (0,0), (-1,-1), 0),
             ]))
             
-            elements.append(t)
-            elements.append(Spacer(1, 0.15*inch))
+            current_row.append(cell_inner)
+            
+            if len(current_row) == 2:
+                grid_data.append(current_row)
+                current_row = []
+                
+        # Flush last row
+        if len(current_row) > 0:
+            current_row.append("")
+            grid_data.append(current_row)
+            
+        # Transform grid_data to Table data and build styles
+        final_data = []
+        table_styles = [
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('LEFTPADDING', (0,0), (-1,-1), 5),
+            ('RIGHTPADDING', (0,0), (-1,-1), 5),
+            ('TOPPADDING', (0,0), (-1,-1), 5),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+            ('Grid', (0,0), (-1,-1), 0.5, colors.lightgrey),
+        ]
+        
+        row_idx = 0
+        for r_data in grid_data:
+            if len(r_data) == 1 and isinstance(r_data[0], str) and r_data[0].startswith("BRANCH_HEADER:"):
+                # It's a header
+                b_title = r_data[0].split(":", 1)[1]
+                final_data.append([Paragraph(b_title, styles['Heading3']), ''])
+                # Add Span style
+                table_styles.append(('SPAN', (0, row_idx), (1, row_idx)))
+                table_styles.append(('BACKGROUND', (0, row_idx), (1, row_idx), colors.aliceblue))
+                table_styles.append(('ALIGN', (0, row_idx), (1, row_idx), 'LEFT'))
+            else:
+                final_data.append(r_data)
+            row_idx += 1
+            
+        t = Table(final_data, colWidths=[3.75*inch, 3.75*inch])
+        t.setStyle(TableStyle(table_styles))
+        elements.append(t)
 
     try:
         doc.build(elements)
