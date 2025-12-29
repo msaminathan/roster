@@ -176,6 +176,7 @@ def check_today_events(df):
                         events.append({
                             'name': row['name'],
                             'type': 'Birthday',
+                            'date': row['dob'],
                             'photo_1966': row['photo_1966'],
                             'photo_current': row['photo_current']
                         })
@@ -193,6 +194,7 @@ def check_today_events(df):
                         events.append({
                             'name': row['name'],
                             'type': 'Wedding Anniversary',
+                            'date': row['wad'],
                             'photo_1966': row['photo_1966'],
                             'photo_current': row['photo_current']
                         })
@@ -205,7 +207,7 @@ def check_today_events(df):
 @st.dialog("🎉 Special Occasions Today!")
 def show_event_popup(events):
     for event in events:
-        st.subheader(f"Happy {event['type']}, {event['name']}!")
+        st.subheader(f"Happy {event['type']} ({event['date']}), {event['name']}!")
         
         # Photos
         c1, c2 = st.columns(2)
