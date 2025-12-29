@@ -375,7 +375,7 @@ if not st.session_state['logged_in']:
 
 # Logout
 st.sidebar.markdown(f"**Logged in as:** {st.session_state['user_info']['name']}")
-if st.sidebar.button("Edit Profile"):
+if st.sidebar.button("Edit My Profile", type="primary"):
     if not df.empty and st.session_state.get('user_info'):
         user_roll = st.session_state['user_info']['roll_no']
         user_rows = df[df['roll_no'] == user_roll]
