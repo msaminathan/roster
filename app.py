@@ -228,6 +228,106 @@ def show_event_popup(events):
         st.markdown(f"**Wishing you a wonderful day filled with joy and happiness!**")
         st.divider()
 
+# Update Function
+def update_graduate(id, name, roll_no, hostel, dob, wad, spouse_name, lives_in, state, country, email, phone, branch, new_photo_bytes=None):
+    conn = get_db_connection()
+    if not conn:
+        st.error("Database connection failed")
+        return
+
+    cursor = conn.cursor()
+    
+    if new_photo_bytes:
+        # Update with photo
+        sql = """UPDATE graduates 
+                 SET name=%s, roll_no=%s, hostel=%s, dob=%s, wad=%s, spouse_name=%s, lives_in=%s, state=%s, country=%s, email=%s, phone=%s, branch=%s, photo_current=%s 
+                 WHERE id=%s"""
+        val = (name, roll_no, hostel, dob, wad, spouse_name, lives_in, state, country, email, phone, branch, new_photo_bytes, id)
+    else:
+        # Update without photo
+        sql = """UPDATE graduates 
+                 SET name=%s, roll_no=%s, hostel=%s, dob=%s, wad=%s, spouse_name=%s, lives_in=%s, state=%s, country=%s, email=%s, phone=%s, branch=%s 
+                 WHERE id=%s"""
+        val = (name, roll_no, hostel, dob, wad, spouse_name, lives_in, state, country, email, phone, branch, id)
+        
+    try:
+        cursor.execute(sql, val)
+        conn.commit()
+        st.success("Updated successfully!")
+        st.rerun()
+    except Exception as e:
+        st.error(f"Error updating: {e}")
+    finally:
+        cursor.close()
+        conn.close()
+
+# Helper removed: save_changes_from_editor (Replaced by per-row Edit Dialog)
+
+# Helper to highlight user row
+def highlight_user(row):
+    try:
+        if st.session_state['user_info']['roll_no'] == row['roll_no']:
+            return ['background-color: lightyellow'] * len(row)
+        else:
+            return [''] * len(row)
+    except:
+        return [''] * len(row)
+
+# Edit Dialog
+@st.dialog("Edit My Details")
+def edit_dialog(row):
+    with st.form("edit_form"):
+        # Row 1
+        c1, c2 = st.columns(2)
+        with c1:
+            name = st.text_input("Name", value=row['name'])
+        with c2:
+            roll_no = st.text_input("Roll No", value=row['roll_no'])
+            
+        # Row 2
+        c3, c4 = st.columns(2)
+        with c3:
+            branch = st.text_input("Branch", value=row['branch'] if row['branch'] else "")
+        with c4:
+             hostel = st.text_input("Hostel", value=row['hostel'] if row['hostel'] else "")
+
+        # Row 3
+        c5, c6 = st.columns(2)
+        with c5:
+             dob = st.text_input("DOB", value=row['dob'] if row['dob'] else "")
+        with c6:
+             wad = st.text_input("WAD", value=row['wad'] if row['wad'] else "")
+
+        # Row 4
+        c7, c8 = st.columns(2)
+        with c7:
+             spouse_name = st.text_input("Spouse Name", value=row['spouse_name'] if row.get('spouse_name') else "")
+        with c8:
+             lives_in = st.text_input("Lives In (City)", value=row['lives_in'] if row['lives_in'] else "")
+
+        # Row 5
+        c9, c10 = st.columns(2)
+        with c9:
+            state = st.text_input("State", value=row['state'] if row['state'] else "")
+        with c10:
+            country = st.text_input("Country", value=row['country'] if row.get('country') else "") # Added Country
+
+        # Row 6
+        c11, c12 = st.columns(2)
+        with c11:
+            email = st.text_input("Email", value=row['email'] if row['email'] else "")
+        with c12:
+            phone = st.text_input("Phone", value=row['phone'] if row['phone'] else "")
+        
+        st.markdown("---")
+        st.markdown("**Update Photo**")
+        uploaded_file = st.file_uploader("Choose a new Current Photo", type=['jpg', 'jpeg', 'png'])
+        
+        if st.form_submit_button("Save Changes"):
+            st.session_state['table_key'] += 1 # Force reset of filtered table views
+            photo_bytes = uploaded_file.getvalue() if uploaded_file else None
+            update_graduate(int(row['id']), name, roll_no, hostel, dob, wad, spouse_name, lives_in, state, country, email, phone, branch, photo_bytes)
+
 # Session State for Login
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
@@ -275,6 +375,15 @@ if not st.session_state['logged_in']:
 
 # Logout
 st.sidebar.markdown(f"**Logged in as:** {st.session_state['user_info']['name']}")
+if st.sidebar.button("Edit Profile"):
+    if not df.empty and st.session_state.get('user_info'):
+        user_roll = st.session_state['user_info']['roll_no']
+        user_rows = df[df['roll_no'] == user_roll]
+        if not user_rows.empty:
+            edit_dialog(user_rows.iloc[0])
+        else:
+             st.error("User details not found.")
+
 if st.sidebar.button("Logout"):
     # Log logout
     if 'log_id' in st.session_state:
@@ -411,105 +520,6 @@ st.sidebar.markdown(f"""
 
 
 
-# Update Function
-def update_graduate(id, name, roll_no, hostel, dob, wad, spouse_name, lives_in, state, country, email, phone, branch, new_photo_bytes=None):
-    conn = get_db_connection()
-    if not conn:
-        st.error("Database connection failed")
-        return
-
-    cursor = conn.cursor()
-    
-    if new_photo_bytes:
-        # Update with photo
-        sql = """UPDATE graduates 
-                 SET name=%s, roll_no=%s, hostel=%s, dob=%s, wad=%s, spouse_name=%s, lives_in=%s, state=%s, country=%s, email=%s, phone=%s, branch=%s, photo_current=%s 
-                 WHERE id=%s"""
-        val = (name, roll_no, hostel, dob, wad, spouse_name, lives_in, state, country, email, phone, branch, new_photo_bytes, id)
-    else:
-        # Update without photo
-        sql = """UPDATE graduates 
-                 SET name=%s, roll_no=%s, hostel=%s, dob=%s, wad=%s, spouse_name=%s, lives_in=%s, state=%s, country=%s, email=%s, phone=%s, branch=%s 
-                 WHERE id=%s"""
-        val = (name, roll_no, hostel, dob, wad, spouse_name, lives_in, state, country, email, phone, branch, id)
-        
-    try:
-        cursor.execute(sql, val)
-        conn.commit()
-        st.success("Updated successfully!")
-        st.rerun()
-    except Exception as e:
-        st.error(f"Error updating: {e}")
-    finally:
-        cursor.close()
-        conn.close()
-
-# Helper removed: save_changes_from_editor (Replaced by per-row Edit Dialog)
-
-# Helper to highlight user row
-def highlight_user(row):
-    try:
-        if st.session_state['user_info']['roll_no'] == row['roll_no']:
-            return ['background-color: lightyellow'] * len(row)
-        else:
-            return [''] * len(row)
-    except:
-        return [''] * len(row)
-
-# Edit Dialog
-@st.dialog("Edit Graduate Details")
-def edit_dialog(row):
-    with st.form("edit_form"):
-        # Row 1
-        c1, c2 = st.columns(2)
-        with c1:
-            name = st.text_input("Name", value=row['name'])
-        with c2:
-            roll_no = st.text_input("Roll No", value=row['roll_no'])
-            
-        # Row 2
-        c3, c4 = st.columns(2)
-        with c3:
-            branch = st.text_input("Branch", value=row['branch'] if row['branch'] else "")
-        with c4:
-             hostel = st.text_input("Hostel", value=row['hostel'] if row['hostel'] else "")
-
-        # Row 3
-        c5, c6 = st.columns(2)
-        with c5:
-             dob = st.text_input("DOB", value=row['dob'] if row['dob'] else "")
-        with c6:
-             wad = st.text_input("WAD", value=row['wad'] if row['wad'] else "")
-
-        # Row 4
-        c7, c8 = st.columns(2)
-        with c7:
-             spouse_name = st.text_input("Spouse Name", value=row['spouse_name'] if row.get('spouse_name') else "")
-        with c8:
-             lives_in = st.text_input("Lives In (City)", value=row['lives_in'] if row['lives_in'] else "")
-
-        # Row 5
-        c9, c10 = st.columns(2)
-        with c9:
-            state = st.text_input("State", value=row['state'] if row['state'] else "")
-        with c10:
-            country = st.text_input("Country", value=row['country'] if row.get('country') else "") # Added Country
-
-        # Row 6
-        c11, c12 = st.columns(2)
-        with c11:
-            email = st.text_input("Email", value=row['email'] if row['email'] else "")
-        with c12:
-            phone = st.text_input("Phone", value=row['phone'] if row['phone'] else "")
-        
-        st.markdown("---")
-        st.markdown("**Update Photo**")
-        uploaded_file = st.file_uploader("Choose a new Current Photo", type=['jpg', 'jpeg', 'png'])
-        
-        if st.form_submit_button("Save Changes"):
-            st.session_state['table_key'] += 1 # Force reset of filtered table views
-            photo_bytes = uploaded_file.getvalue() if uploaded_file else None
-            update_graduate(int(row['id']), name, roll_no, hostel, dob, wad, spouse_name, lives_in, state, country, email, phone, branch, photo_bytes)
 
 # Main Grid
 if filtered_df.empty:
