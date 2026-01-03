@@ -9,3 +9,5 @@ reportlab
 sqlalchemy
 matplotlib
 pypdf
+folium==0.20.0
+streamlit-folium==0.25.3

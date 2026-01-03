@@ -9,8 +9,11 @@ import plotly.graph_objects as go
 import datetime
 import os
 from dotenv import load_dotenv
-from generate_roster_pdf import generate_pdf, generate_text_roster, generate_consolidated_report, generate_memoriam_pdf, generate_missing_pdf # Import generation functions
+from generate_roster_pdf import generate_pdf, generate_text_roster, generate_consolidated_report, generate_memoriam_pdf, generate_missing_pdf
 from sqlalchemy import create_engine, text
+import folium
+from streamlit_folium import st_folium
+from folium.plugins import MarkerCluster
 
 # Load environment variables
 load_dotenv()
@@ -414,7 +417,7 @@ selected_branch = st.sidebar.selectbox("Filter by Branch", unique_branches)
 # Sort Options
 sort_option = st.sidebar.selectbox("Sort By", ["Name (A-Z)", "Country, City", "Roll No (Ascending)"])
 
-view_mode = st.sidebar.radio("View Option", ["Grid View", "List View", "Table (Text)", "Table (with Icons)", "Statistics", "Items of Interest", "Missing Contacts", "In Memoriam", "Reports & Downloads", "About this App"])
+view_mode = st.sidebar.radio("View Option", ["Grid View", "List View", "Table (Text)", "Table (with Icons)", "Statistics", "Global Map", "Items of Interest", "Missing Contacts", "In Memoriam", "Reports & Downloads", "About this App"])
 
 # Filtering
 filtered_df = df.copy()
@@ -759,6 +762,80 @@ else:
                  edit_dialog(full_row)
             else:
                  st.warning(f"You can only edit your own details (Roll No: {current_user_roll}).")
+
+    elif view_mode == "Global Map":
+        st.header("🌍 Global Alumni Map")
+        st.markdown("Map shows locations of graduates based on their 'Lives In', 'State', and 'Country'. Overlapping markers are clustered; click to expand.")
+        
+        # 1. Fetch Location Data
+        engine = get_db_engine()
+        try:
+            with engine.connect() as conn:
+                loc_df = pd.read_sql(text("SELECT * FROM location"), conn)
+        except Exception as e:
+            st.error(f"Error fetching location data: {e}")
+            loc_df = pd.DataFrame()
+            
+        if not loc_df.empty and not filtered_df.empty:
+            # 2. Merge with Filtered Graduates
+            # filtered_df has the current filters applied (Branch, Search)
+            # We merge on roll_no
+            map_data = pd.merge(filtered_df, loc_df[['roll_no', 'latitude', 'longitude']], on='roll_no', how='inner')
+            
+            # Filter out invalid lat/lon
+            map_data = map_data.dropna(subset=['latitude', 'longitude'])
+            
+            if map_data.empty:
+                 st.warning("No location data found for the selected graduates.")
+            else:
+                 st.write(f"Showing **{len(map_data)}** graduates on the map.")
+                 
+                 # 3. Create Map
+                 # Center map (default: 20, 0 for world view)
+                 m = folium.Map(location=[20, 0], zoom_start=2)
+                 
+                 # Cluster
+                 marker_cluster = MarkerCluster(spiderfyOnMaxZoom=True).add_to(m)
+                 
+                 for _, row in map_data.iterrows():
+                     # Popup Content
+                     # Image
+                     img_uri = ""
+                     if row['photo_current']:
+                         try:
+                             b64 = base64.b64encode(row['photo_current']).decode('utf-8')
+                             img_uri = f'<img src="data:image/jpeg;base64,{b64}" width="100px" style="border-radius: 5px; margin-bottom: 5px;"><br>'
+                         except: pass
+                     
+                     lives_in_str = f"{row['lives_in']}, {row['state']}" if row['lives_in'] else row['state']
+                     
+                     popup_html = f"""
+                     <div style="font-family: sans-serif; width: 200px;">
+                        {img_uri}
+                        <b style="font-size: 14px;">{row['name']}</b><br>
+                        <span style="color: #666; font-size: 12px;">{row['roll_no']}</span><br>
+                        <span style="color: #2e86de; font-weight: bold;">{row['branch']}</span><br>
+                        <span style="font-size: 12px;">📍 {lives_in_str}</span>
+                     </div>
+                     """
+                     
+                     folium.CircleMarker(
+                        location=[row['latitude'], row['longitude']],
+                        radius=6,
+                        color='#e74c3c', # Red ring
+                        fill=True,
+                        fill_color='#e74c3c', # Red fill
+                        fill_opacity=0.8,
+                        popup=folium.Popup(popup_html, max_width=250)
+                     ).add_to(marker_cluster)
+                     
+                 st_folium(m, width=1000, height=600)
+                 
+        else:
+            if loc_df.empty:
+                st.warning("Location data not loaded from database.")
+            else:
+                st.info("No graduates found for current filter.")
 
     elif view_mode == "Statistics":
         st.header("🎓 Statistics & Pareto Charts")
