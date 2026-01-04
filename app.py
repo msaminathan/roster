@@ -73,6 +73,21 @@ def get_image_from_blob(blob_data):
     except Exception as e:
         return None
 
+# Helper to resize image for map
+def resize_image_for_map(image_bytes, max_wh=100):
+    if not image_bytes: return None
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        # Convert to RGB if mode is RGBA or P to avoid JPEG saving issues
+        if img.mode in ('RGBA', 'P'):
+            img = img.convert('RGB')
+        img.thumbnail((max_wh, max_wh))
+        buffered = io.BytesIO()
+        img.save(buffered, format="JPEG", quality=70) # Lower quality for thumbnail
+        return buffered.getvalue()
+    except:
+        return None
+
 # Load Data
 try:
     df = load_data()
@@ -803,8 +818,11 @@ else:
                      img_uri = ""
                      if row['photo_current']:
                          try:
-                             b64 = base64.b64encode(row['photo_current']).decode('utf-8')
-                             img_uri = f'<img src="data:image/jpeg;base64,{b64}" width="100px" style="border-radius: 5px; margin-bottom: 5px;"><br>'
+                             # Optimize: Resize image for thumbnail in popup
+                             resized_bytes = resize_image_for_map(row['photo_current'], 100)
+                             if resized_bytes:
+                                 b64 = base64.b64encode(resized_bytes).decode('utf-8')
+                                 img_uri = f'<img src="data:image/jpeg;base64,{b64}" width="100px" style="border-radius: 5px; margin-bottom: 5px;"><br>'
                          except: pass
                      
                      lives_in_str = f"{row['lives_in']}, {row['state']}" if row['lives_in'] else row['state']
