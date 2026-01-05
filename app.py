@@ -248,14 +248,24 @@ def show_event_popup(events):
         st.divider()
 
 # Update Function
+# Update Function
 def update_graduate(id, name, roll_no, hostel, dob, wad, spouse_name, lives_in, state, country, email, phone, branch, new_photo_bytes=None):
     conn = get_db_connection()
     if not conn:
         st.error("Database connection failed")
         return
 
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True) # Use dictionary cursor for easier access
     
+    # 1. Fetch CURRENT data to check for address changes
+    current_data = {}
+    try:
+        cursor.execute("SELECT lives_in, state, country FROM graduates WHERE id = %s", (id,))
+        current_data = cursor.fetchone()
+    except Exception as e:
+        print(f"Error fetching current data: {e}")
+
+    # 2. Update Graduates Table
     if new_photo_bytes:
         # Update with photo
         sql = """UPDATE graduates 
@@ -269,52 +279,94 @@ def update_graduate(id, name, roll_no, hostel, dob, wad, spouse_name, lives_in, 
                  WHERE id=%s"""
         val = (name, roll_no, hostel, dob, wad, spouse_name, lives_in, state, country, email, phone, branch, id)
         
-        
     try:
         cursor.execute(sql, val)
         conn.commit()
         
-        # Trigger Geocoding Update
+        # 3. Geo-Location & Location Table Sync
         try:
-             # Check if location should be updated
-             if lives_in or state or country:
-                  # Simple check: Geocode and update 'location' table
-                  # Ideally this logic matches populate_location.py but for single user
-                  from geopy.geocoders import Nominatim
-                  geolocator = Nominatim(user_agent="iitm_graduates_locator_app_update")
-                  
-                  query_parts = []
-                  if lives_in: query_parts.append(lives_in)
-                  if state: query_parts.append(state)
-                  if country: query_parts.append(country)
-                  
-                  address_query = ", ".join(query_parts)
-                  
-                  location = geolocator.geocode(address_query, timeout=5)
-                  
-                  lat = None
-                  lon = None
-                  if location:
-                      lat = location.latitude
-                      lon = location.longitude
-                      
-                  # Update Location Table (Upsert)
-                  sql_loc = """
-                      INSERT INTO location (roll_no, branch, name, lives_in, state, country, latitude, longitude)
-                      VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                      ON DUPLICATE KEY UPDATE
-                          branch = VALUES(branch),
-                          name = VALUES(name),
-                          lives_in = VALUES(lives_in),
-                          state = VALUES(state),
-                          country = VALUES(country),
-                          latitude = VALUES(latitude),
-                          longitude = VALUES(longitude)
-                  """
-                  cursor.execute(sql_loc, (roll_no, branch, name, lives_in, state, country, lat, lon))
-                  conn.commit()
+            # Determine if address fields changed
+            address_changed = True # Default to true if fetch failed
+            if current_data:
+                old_lives_in = current_data.get('lives_in') or ""
+                old_state = current_data.get('state') or ""
+                old_country = current_data.get('country') or ""
+                
+                # Normalize None to empty string for comparison
+                new_lives_in = lives_in or ""
+                new_state = state or ""
+                new_country = country or ""
+                
+                if (old_lives_in == new_lives_in) and (old_state == new_state) and (old_country == new_country):
+                    address_changed = False
+
+            # Check if address is cleared (all empty)
+            is_address_cleared = not (lives_in or state or country)
+
+            if is_address_cleared:
+                # Case: Address cleared -> Remove from location table
+                cursor.execute("DELETE FROM location WHERE roll_no = %s", (roll_no,))
+                conn.commit()
+                # st.info("Location details removed.") # Optional info
+
+            elif not address_changed:
+                # Case: Address UNCHANGED -> Update Name/Branch only (No Geocoding)
+                # We do an UPDATE only if row exists (using upsert logic but without changing lat/long if they exist)
+                # Actually, strictly standard practice is to Update.
+                # Let's use INSERT ON DUPLICATE KEY UPDATE but preserve existing Lat/Lon if we don't have new ones?
+                # No, if address unchanged, we just want to update metadata.
+                
+                sql_update_meta = """
+                    UPDATE location 
+                    SET name = %s, branch = %s
+                    WHERE roll_no = %s
+                """
+                cursor.execute(sql_update_meta, (name, branch, roll_no))
+                conn.commit()
+                
+            else:
+                # Case: Address CHANGED -> Geocode and Full Update
+                from geopy.geocoders import Nominatim
+                geolocator = Nominatim(user_agent="iitm_graduates_locator_app_update")
+                
+                query_parts = []
+                if lives_in: query_parts.append(lives_in)
+                if state: query_parts.append(state)
+                if country: query_parts.append(country)
+                
+                address_query = ", ".join(query_parts)
+                
+                lat = None
+                lon = None
+                
+                try:
+                    location = geolocator.geocode(address_query, timeout=5)
+                    if location:
+                        lat = location.latitude
+                        lon = location.longitude
+                except:
+                    # Geocoding failed, but we still update the text in location table
+                    # Lat/Lon will be NULL (or old value? Plan said NULL)
+                    pass 
+                    
+                # Upsert
+                sql_loc = """
+                    INSERT INTO location (roll_no, branch, name, lives_in, state, country, latitude, longitude)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        branch = VALUES(branch),
+                        name = VALUES(name),
+                        lives_in = VALUES(lives_in),
+                        state = VALUES(state),
+                        country = VALUES(country),
+                        latitude = VALUES(latitude),
+                        longitude = VALUES(longitude)
+                """
+                cursor.execute(sql_loc, (roll_no, branch, name, lives_in, state, country, lat, lon))
+                conn.commit()
+                
         except Exception as geo_e:
-             print(f"Geocoding update failed: {geo_e}") # Non-blocking error
+             print(f"Location sync failed: {geo_e}") # Non-blocking error
         
         st.success("Updated successfully!")
         st.rerun()
