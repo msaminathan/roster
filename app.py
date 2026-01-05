@@ -285,37 +285,41 @@ def update_graduate(id, name, roll_no, hostel, dob, wad, spouse_name, lives_in, 
         
         # 3. Geo-Location & Location Table Sync
         try:
-            # Determine if address fields changed
-            address_changed = True # Default to true if fetch failed
+            # 3a. Check if address text changed
+            address_text_changed = True
             if current_data:
                 old_lives_in = current_data.get('lives_in') or ""
                 old_state = current_data.get('state') or ""
                 old_country = current_data.get('country') or ""
                 
-                # Normalize None to empty string for comparison
                 new_lives_in = lives_in or ""
                 new_state = state or ""
                 new_country = country or ""
                 
                 if (old_lives_in == new_lives_in) and (old_state == new_state) and (old_country == new_country):
-                    address_changed = False
+                    address_text_changed = False
+            
+            # 3b. Check if 'location' table has valid entry
+            # We need to ensure we have lat/long. If not, even if text didn't change, we must geocode.
+            loc_exists_and_valid = False
+            try:
+                cursor.execute("SELECT latitude, longitude FROM location WHERE roll_no = %s", (roll_no,))
+                loc_row = cursor.fetchone()
+                if loc_row and loc_row.get('latitude') is not None and loc_row.get('longitude') is not None:
+                     loc_exists_and_valid = True
+            except:
+                pass # Assume not valid if error
 
-            # Check if address is cleared (all empty)
+            # Decision Logic
             is_address_cleared = not (lives_in or state or country)
 
             if is_address_cleared:
                 # Case: Address cleared -> Remove from location table
                 cursor.execute("DELETE FROM location WHERE roll_no = %s", (roll_no,))
                 conn.commit()
-                # st.info("Location details removed.") # Optional info
 
-            elif not address_changed:
-                # Case: Address UNCHANGED -> Update Name/Branch only (No Geocoding)
-                # We do an UPDATE only if row exists (using upsert logic but without changing lat/long if they exist)
-                # Actually, strictly standard practice is to Update.
-                # Let's use INSERT ON DUPLICATE KEY UPDATE but preserve existing Lat/Lon if we don't have new ones?
-                # No, if address unchanged, we just want to update metadata.
-                
+            elif not address_text_changed and loc_exists_and_valid:
+                # Case: Address UNCHANGED AND Location VALID -> Update Name/Branch only (No Geocoding)
                 sql_update_meta = """
                     UPDATE location 
                     SET name = %s, branch = %s
@@ -325,7 +329,7 @@ def update_graduate(id, name, roll_no, hostel, dob, wad, spouse_name, lives_in, 
                 conn.commit()
                 
             else:
-                # Case: Address CHANGED -> Geocode and Full Update
+                # Case: Address CHANGED OR Location INVALID/MISSING -> Geocode and Full Update
                 from geopy.geocoders import Nominatim
                 geolocator = Nominatim(user_agent="iitm_graduates_locator_app_update")
                 
@@ -345,11 +349,11 @@ def update_graduate(id, name, roll_no, hostel, dob, wad, spouse_name, lives_in, 
                         lat = location.latitude
                         lon = location.longitude
                 except:
-                    # Geocoding failed, but we still update the text in location table
-                    # Lat/Lon will be NULL (or old value? Plan said NULL)
                     pass 
                     
                 # Upsert
+                # Note: 'loc_exists_and_valid' might be False because row doesn't exist OR lat is null.
+                # ON DUPLICATE KEY UPDATE handles both existing row (fix lat/long) and new row.
                 sql_loc = """
                     INSERT INTO location (roll_no, branch, name, lives_in, state, country, latitude, longitude)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
