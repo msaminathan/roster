@@ -14,7 +14,6 @@ from sqlalchemy import create_engine, text
 import folium
 from streamlit_folium import st_folium
 from folium.plugins import MarkerCluster
-import time
 
 # Load environment variables
 load_dotenv()
@@ -72,21 +71,6 @@ def get_image_from_blob(blob_data):
         image = Image.open(io.BytesIO(blob_data))
         return image
     except Exception as e:
-        return None
-
-# Helper to resize image for map
-def resize_image_for_map(image_bytes, max_wh=100):
-    if not image_bytes: return None
-    try:
-        img = Image.open(io.BytesIO(image_bytes))
-        # Convert to RGB if mode is RGBA or P to avoid JPEG saving issues
-        if img.mode in ('RGBA', 'P'):
-            img = img.convert('RGB')
-        img.thumbnail((max_wh, max_wh))
-        buffered = io.BytesIO()
-        img.save(buffered, format="JPEG", quality=70) # Lower quality for thumbnail
-        return buffered.getvalue()
-    except:
         return None
 
 # Load Data
@@ -248,24 +232,14 @@ def show_event_popup(events):
         st.divider()
 
 # Update Function
-# Update Function
 def update_graduate(id, name, roll_no, hostel, dob, wad, spouse_name, lives_in, state, country, email, phone, branch, new_photo_bytes=None):
     conn = get_db_connection()
     if not conn:
         st.error("Database connection failed")
         return
 
-    cursor = conn.cursor(dictionary=True) # Use dictionary cursor for easier access
+    cursor = conn.cursor()
     
-    # 1. Fetch CURRENT data to check for address changes
-    current_data = {}
-    try:
-        cursor.execute("SELECT lives_in, state, country FROM graduates WHERE id = %s", (id,))
-        current_data = cursor.fetchone()
-    except Exception as e:
-        print(f"Error fetching current data: {e}")
-
-    # 2. Update Graduates Table
     if new_photo_bytes:
         # Update with photo
         sql = """UPDATE graduates 
@@ -282,96 +256,6 @@ def update_graduate(id, name, roll_no, hostel, dob, wad, spouse_name, lives_in, 
     try:
         cursor.execute(sql, val)
         conn.commit()
-        
-        # 3. Geo-Location & Location Table Sync
-        try:
-            # 3a. Check if address text changed
-            address_text_changed = True
-            if current_data:
-                old_lives_in = current_data.get('lives_in') or ""
-                old_state = current_data.get('state') or ""
-                old_country = current_data.get('country') or ""
-                
-                new_lives_in = lives_in or ""
-                new_state = state or ""
-                new_country = country or ""
-                
-                if (old_lives_in == new_lives_in) and (old_state == new_state) and (old_country == new_country):
-                    address_text_changed = False
-            
-            # 3b. Check if 'location' table has valid entry
-            # We need to ensure we have lat/long. If not, even if text didn't change, we must geocode.
-            loc_exists_and_valid = False
-            try:
-                cursor.execute("SELECT latitude, longitude FROM location WHERE roll_no = %s", (roll_no,))
-                loc_row = cursor.fetchone()
-                if loc_row and loc_row.get('latitude') is not None and loc_row.get('longitude') is not None:
-                     loc_exists_and_valid = True
-            except:
-                pass # Assume not valid if error
-
-            # Decision Logic
-            is_address_cleared = not (lives_in or state or country)
-
-            if is_address_cleared:
-                # Case: Address cleared -> Remove from location table
-                cursor.execute("DELETE FROM location WHERE roll_no = %s", (roll_no,))
-                conn.commit()
-
-            elif not address_text_changed and loc_exists_and_valid:
-                # Case: Address UNCHANGED AND Location VALID -> Update Name/Branch only (No Geocoding)
-                sql_update_meta = """
-                    UPDATE location 
-                    SET name = %s, branch = %s
-                    WHERE roll_no = %s
-                """
-                cursor.execute(sql_update_meta, (name, branch, roll_no))
-                conn.commit()
-                
-            else:
-                # Case: Address CHANGED OR Location INVALID/MISSING -> Geocode and Full Update
-                from geopy.geocoders import Nominatim
-                geolocator = Nominatim(user_agent="iitm_graduates_locator_app_update")
-                
-                query_parts = []
-                if lives_in: query_parts.append(lives_in)
-                if state: query_parts.append(state)
-                if country: query_parts.append(country)
-                
-                address_query = ", ".join(query_parts)
-                
-                lat = None
-                lon = None
-                
-                try:
-                    location = geolocator.geocode(address_query, timeout=5)
-                    if location:
-                        lat = location.latitude
-                        lon = location.longitude
-                except:
-                    pass 
-                    
-                # Upsert
-                # Note: 'loc_exists_and_valid' might be False because row doesn't exist OR lat is null.
-                # ON DUPLICATE KEY UPDATE handles both existing row (fix lat/long) and new row.
-                sql_loc = """
-                    INSERT INTO location (roll_no, branch, name, lives_in, state, country, latitude, longitude)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE
-                        branch = VALUES(branch),
-                        name = VALUES(name),
-                        lives_in = VALUES(lives_in),
-                        state = VALUES(state),
-                        country = VALUES(country),
-                        latitude = VALUES(latitude),
-                        longitude = VALUES(longitude)
-                """
-                cursor.execute(sql_loc, (roll_no, branch, name, lives_in, state, country, lat, lon))
-                conn.commit()
-                
-        except Exception as geo_e:
-             print(f"Location sync failed: {geo_e}") # Non-blocking error
-        
         st.success("Updated successfully!")
         st.rerun()
     except Exception as e:
@@ -454,11 +338,6 @@ if 'logged_in' not in st.session_state:
     st.session_state['log_id'] = None
 if 'show_popup' not in st.session_state:
     st.session_state['show_popup'] = False
-
-# Handle Redirect
-if st.session_state.get('redirect_to_grid'):
-    st.session_state['view_mode_selection'] = 'Grid View'
-    del st.session_state['redirect_to_grid']
 if 'table_key' not in st.session_state:
     st.session_state['table_key'] = 0
 
@@ -538,7 +417,7 @@ selected_branch = st.sidebar.selectbox("Filter by Branch", unique_branches)
 # Sort Options
 sort_option = st.sidebar.selectbox("Sort By", ["Name (A-Z)", "Country, City", "Roll No (Ascending)"])
 
-view_mode = st.sidebar.radio("View Option", ["Grid View", "List View", "Table (Text)", "Table (with Icons)", "Statistics", "Global Map", "Where am I?", "Items of Interest", "Missing Contacts", "In Memoriam", "Reports & Downloads", "About this App"], key="view_mode_selection")
+view_mode = st.sidebar.radio("View Option", ["Grid View", "List View", "Table (Text)", "Table (with Icons)", "Statistics", "Global Map", "Items of Interest", "Missing Contacts", "In Memoriam", "Reports & Downloads", "About this App"])
 
 # Filtering
 filtered_df = df.copy()
@@ -885,7 +764,7 @@ else:
                  st.warning(f"You can only edit your own details (Roll No: {current_user_roll}).")
 
     elif view_mode == "Global Map":
-        st.header(f"🌍 Global Alumni Map - {selected_branch}")
+        st.header("🌍 Global Alumni Map")
         st.markdown("Map shows locations of graduates based on their 'Lives In', 'State', and 'Country'. Overlapping markers are clustered; click to expand.")
         
         # 1. Fetch Location Data
@@ -924,11 +803,8 @@ else:
                      img_uri = ""
                      if row['photo_current']:
                          try:
-                             # Optimize: Resize image for thumbnail in popup
-                             resized_bytes = resize_image_for_map(row['photo_current'], 100)
-                             if resized_bytes:
-                                 b64 = base64.b64encode(resized_bytes).decode('utf-8')
-                                 img_uri = f'<img src="data:image/jpeg;base64,{b64}" width="100px" style="border-radius: 5px; margin-bottom: 5px;"><br>'
+                             b64 = base64.b64encode(row['photo_current']).decode('utf-8')
+                             img_uri = f'<img src="data:image/jpeg;base64,{b64}" width="100px" style="border-radius: 5px; margin-bottom: 5px;"><br>'
                          except: pass
                      
                      lives_in_str = f"{row['lives_in']}, {row['state']}" if row['lives_in'] else row['state']
@@ -1079,71 +955,6 @@ else:
         with tab4:
              if 'hostel' in df.columns:
                 draw_pareto(df, 'hostel', 'Graduates by Hostel')
-
-    elif view_mode == "Where am I?":
-        st.header("📍 Where am I?")
-        
-        if not st.session_state.get('logged_in'):
-            st.warning("Please login to see your location.")
-        else:
-            user_roll = st.session_state['user_info']['roll_no']
-            
-            # Fetch location from DB
-            engine = get_db_engine()
-            my_loc = None
-            try:
-                with engine.connect() as conn:
-                    res = pd.read_sql(text(f"SELECT * FROM location WHERE roll_no='{user_roll}'"), conn)
-                    if not res.empty:
-                        my_loc = res.iloc[0]
-            except Exception as e:
-                st.error(f"Error fetching your location: {e}")
-
-            if my_loc is not None and pd.notna(my_loc['latitude']) and pd.notna(my_loc['longitude']):
-                st.write(f"We have your location as: **{my_loc['lives_in']}, {my_loc['state']}, {my_loc['country']}**")
-                
-                # Show Map
-                m = folium.Map(location=[my_loc['latitude'], my_loc['longitude']], zoom_start=10)
-                folium.Marker(
-                    [my_loc['latitude'], my_loc['longitude']], 
-                    popup=f"{my_loc['name']}",
-                    tooltip="You are here"
-                ).add_to(m)
-                st_folium(m, width=700, height=400)
-                
-                st.info("Is this location correct?")
-                c_yes, c_no = st.columns(2)
-                with c_yes:
-                    if st.button("✅ Yes, it is correct"):
-                        # Redirect to grid view (conceptually, we change the selectbox state or just rerun with a query param if possible, 
-                        # but streamlit selectbox programmatic reset is tricky. Best is to tell them to go there or set session state default)
-                        # For now, we can try to force a rerun or just show success. 
-                        # User requirement: "goes to Grid View"
-                        # To verify this works, we might need to store 'view_mode' in session state and default the selectbox to it.
-                        # But selectbox 'index' is static on init. 
-                        # Hack: Set a session state flag that overrides the default index next run?
-                        # Simplest: "Great! You can now browse the directory."
-                        st.success("Great! Returning to Grid View...")
-                        time.sleep(1)
-                        # Just a message for now as forceful navigation requires structure change
-                        st.session_state['redirect_to_grid'] = True
-                        st.rerun()
-                        # Let's just notify and user manually goes, or we could rerun if we controlled the selectbox index via session state.
-                with c_no:
-                    if st.button("❌ No, I want to edit"):
-                        # Fetch user row for edit
-                        if not df.empty:
-                             user_rows = df[df['roll_no'] == user_roll]
-                             if not user_rows.empty:
-                                 edit_dialog(user_rows.iloc[0])
-            else:
-                st.warning("We don't have your accurate location.")
-                st.write("Please update your 'Lives In', 'State', and 'Country' details.")
-                if st.button("Update Profile"):
-                     if not df.empty:
-                             user_rows = df[df['roll_no'] == user_roll]
-                             if not user_rows.empty:
-                                 edit_dialog(user_rows.iloc[0])
 
     elif view_mode == "Items of Interest":
         st.header("📌 Items of Interest")
