@@ -977,19 +977,27 @@ else:
                          </div>
                          """
                          
-                         # Highlight selected user with a different icon or just tooltip
-                         # For now, standard markers, but if selected, we could distinctively mark.
-                         # Let's just rely on centering.
-                         
-                         folium.CircleMarker(
+                         # Special handling for selected user to ensure visibility and popup
+                         is_selected = False
+                         if selected_user_loc is not None and row['roll_no'] == selected_user_loc['roll_no']:
+                             is_selected = True
+                             
+                         # Create Marker
+                         marker = folium.CircleMarker(
                             location=[row['latitude'], row['longitude']],
-                            radius=6,
-                            color='#e74c3c', # Red ring
+                            radius=6 if not is_selected else 9, # Larger if selected
+                            color='#e74c3c' if not is_selected else '#27ae60', # Green if selected
                             fill=True,
-                            fill_color='#e74c3c', # Red fill
+                            fill_color='#e74c3c' if not is_selected else '#27ae60',
                             fill_opacity=0.8,
-                            popup=folium.Popup(popup_html, max_width=250)
-                         ).add_to(marker_cluster)
+                            popup=folium.Popup(popup_html, max_width=250, show=is_selected) # Auto open if selected
+                         )
+                         
+                         if is_selected:
+                             # Add directly to map to behave as "overlay" and ensure popup opens unclustered
+                             marker.add_to(m)
+                         else:
+                             marker.add_to(marker_cluster)
                          
                      st_folium(m, width=800, height=600)
                  
