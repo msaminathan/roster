@@ -14,6 +14,7 @@ from sqlalchemy import create_engine, text
 import folium
 from streamlit_folium import st_folium
 from folium.plugins import MarkerCluster
+import time
 
 # Load environment variables
 load_dotenv()
@@ -61,6 +62,18 @@ def load_data():
         st.error(f"Error loading data: {e}")
         return pd.DataFrame() # Return empty on error
 
+@st.cache_data(ttl=3600)
+def get_all_location_data():
+    engine = get_db_engine()
+    if not engine: return pd.DataFrame()
+    try:
+        with engine.connect() as conn:
+            return pd.read_sql(text("SELECT * FROM location"), conn)
+    except Exception as e:
+        # Avoid showing st.error directly in cached function if possible, or just print
+        print(f"Error fetching location data: {e}")
+        return pd.DataFrame()
+
 # Helper to convert binary/hex to image
 def get_image_from_blob(blob_data):
     if not blob_data:
@@ -71,6 +84,21 @@ def get_image_from_blob(blob_data):
         image = Image.open(io.BytesIO(blob_data))
         return image
     except Exception as e:
+        return None
+
+# Helper to resize image for map
+def resize_image_for_map(image_bytes, max_wh=100):
+    if not image_bytes: return None
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        # Convert to RGB if mode is RGBA or P to avoid JPEG saving issues
+        if img.mode in ('RGBA', 'P'):
+            img = img.convert('RGB')
+        img.thumbnail((max_wh, max_wh))
+        buffered = io.BytesIO()
+        img.save(buffered, format="JPEG", quality=70) # Lower quality for thumbnail
+        return buffered.getvalue()
+    except:
         return None
 
 # Load Data
@@ -232,14 +260,24 @@ def show_event_popup(events):
         st.divider()
 
 # Update Function
+# Update Function
 def update_graduate(id, name, roll_no, hostel, dob, wad, spouse_name, lives_in, state, country, email, phone, branch, new_photo_bytes=None):
     conn = get_db_connection()
     if not conn:
         st.error("Database connection failed")
         return
 
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True) # Use dictionary cursor for easier access
     
+    # 1. Fetch CURRENT data to check for address changes
+    current_data = {}
+    try:
+        cursor.execute("SELECT lives_in, state, country FROM graduates WHERE id = %s", (id,))
+        current_data = cursor.fetchone()
+    except Exception as e:
+        print(f"Error fetching current data: {e}")
+
+    # 2. Update Graduates Table
     if new_photo_bytes:
         # Update with photo
         sql = """UPDATE graduates 
@@ -256,6 +294,96 @@ def update_graduate(id, name, roll_no, hostel, dob, wad, spouse_name, lives_in, 
     try:
         cursor.execute(sql, val)
         conn.commit()
+        
+        # 3. Geo-Location & Location Table Sync
+        try:
+            # 3a. Check if address text changed
+            address_text_changed = True
+            if current_data:
+                old_lives_in = current_data.get('lives_in') or ""
+                old_state = current_data.get('state') or ""
+                old_country = current_data.get('country') or ""
+                
+                new_lives_in = lives_in or ""
+                new_state = state or ""
+                new_country = country or ""
+                
+                if (old_lives_in == new_lives_in) and (old_state == new_state) and (old_country == new_country):
+                    address_text_changed = False
+            
+            # 3b. Check if 'location' table has valid entry
+            # We need to ensure we have lat/long. If not, even if text didn't change, we must geocode.
+            loc_exists_and_valid = False
+            try:
+                cursor.execute("SELECT latitude, longitude FROM location WHERE roll_no = %s", (roll_no,))
+                loc_row = cursor.fetchone()
+                if loc_row and loc_row.get('latitude') is not None and loc_row.get('longitude') is not None:
+                     loc_exists_and_valid = True
+            except:
+                pass # Assume not valid if error
+
+            # Decision Logic
+            is_address_cleared = not (lives_in or state or country)
+
+            if is_address_cleared:
+                # Case: Address cleared -> Remove from location table
+                cursor.execute("DELETE FROM location WHERE roll_no = %s", (roll_no,))
+                conn.commit()
+
+            elif not address_text_changed and loc_exists_and_valid:
+                # Case: Address UNCHANGED AND Location VALID -> Update Name/Branch only (No Geocoding)
+                sql_update_meta = """
+                    UPDATE location 
+                    SET name = %s, branch = %s
+                    WHERE roll_no = %s
+                """
+                cursor.execute(sql_update_meta, (name, branch, roll_no))
+                conn.commit()
+                
+            else:
+                # Case: Address CHANGED OR Location INVALID/MISSING -> Geocode and Full Update
+                from geopy.geocoders import Nominatim
+                geolocator = Nominatim(user_agent="iitm_graduates_locator_app_update")
+                
+                query_parts = []
+                if lives_in: query_parts.append(lives_in)
+                if state: query_parts.append(state)
+                if country: query_parts.append(country)
+                
+                address_query = ", ".join(query_parts)
+                
+                lat = None
+                lon = None
+                
+                try:
+                    location = geolocator.geocode(address_query, timeout=5)
+                    if location:
+                        lat = location.latitude
+                        lon = location.longitude
+                except:
+                    pass 
+                    
+                # Upsert
+                # Note: 'loc_exists_and_valid' might be False because row doesn't exist OR lat is null.
+                # ON DUPLICATE KEY UPDATE handles both existing row (fix lat/long) and new row.
+                sql_loc = """
+                    INSERT INTO location (roll_no, branch, name, lives_in, state, country, latitude, longitude)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        branch = VALUES(branch),
+                        name = VALUES(name),
+                        lives_in = VALUES(lives_in),
+                        state = VALUES(state),
+                        country = VALUES(country),
+                        latitude = VALUES(latitude),
+                        longitude = VALUES(longitude)
+                """
+                cursor.execute(sql_loc, (roll_no, branch, name, lives_in, state, country, lat, lon))
+                conn.commit()
+                
+        except Exception as geo_e:
+             print(f"Location sync failed: {geo_e}") # Non-blocking error
+        
         st.success("Updated successfully!")
         st.rerun()
     except Exception as e:
@@ -338,6 +466,11 @@ if 'logged_in' not in st.session_state:
     st.session_state['log_id'] = None
 if 'show_popup' not in st.session_state:
     st.session_state['show_popup'] = False
+
+# Handle Redirect
+if st.session_state.get('redirect_to_grid'):
+    st.session_state['view_mode_selection'] = 'Grid View'
+    del st.session_state['redirect_to_grid']
 if 'table_key' not in st.session_state:
     st.session_state['table_key'] = 0
 
@@ -417,7 +550,7 @@ selected_branch = st.sidebar.selectbox("Filter by Branch", unique_branches)
 # Sort Options
 sort_option = st.sidebar.selectbox("Sort By", ["Name (A-Z)", "Country, City", "Roll No (Ascending)"])
 
-view_mode = st.sidebar.radio("View Option", ["Grid View", "List View", "Table (Text)", "Table (with Icons)", "Statistics", "Global Map", "Items of Interest", "Missing Contacts", "In Memoriam", "Reports & Downloads", "About this App"])
+view_mode = st.sidebar.radio("View Option", ["Grid View", "List View", "Table (Text)", "Table (with Icons)", "Statistics", "Global Map", "Items of Interest", "Missing Contacts", "In Memoriam", "Reports & Downloads", "About this App"], key="view_mode_selection")
 
 # Filtering
 filtered_df = df.copy()
@@ -764,17 +897,12 @@ else:
                  st.warning(f"You can only edit your own details (Roll No: {current_user_roll}).")
 
     elif view_mode == "Global Map":
-        st.header("🌍 Global Alumni Map")
+        st.header(f"🌍 Global Alumni Map - {selected_branch}")
         st.markdown("Map shows locations of graduates based on their 'Lives In', 'State', and 'Country'. Overlapping markers are clustered; click to expand.")
         
-        # 1. Fetch Location Data
-        engine = get_db_engine()
-        try:
-            with engine.connect() as conn:
-                loc_df = pd.read_sql(text("SELECT * FROM location"), conn)
-        except Exception as e:
-            st.error(f"Error fetching location data: {e}")
-            loc_df = pd.DataFrame()
+        # 1. Fetch Location Data (Cached)
+        loc_df = get_all_location_data()
+
             
         if not loc_df.empty and not filtered_df.empty:
             # 2. Merge with Filtered Graduates
@@ -788,48 +916,82 @@ else:
             if map_data.empty:
                  st.warning("No location data found for the selected graduates.")
             else:
-                 st.write(f"Showing **{len(map_data)}** graduates on the map.")
+                 # Layout: Map (Left), Controls (Right)
+                 col_map, col_controls = st.columns([3, 1])
                  
-                 # 3. Create Map
-                 # Center map (default: 20, 0 for world view)
-                 m = folium.Map(location=[20, 0], zoom_start=2)
+                 selected_user_loc = None
+                 zoom_level = 2
+                 center_coords = [20, 0]
+
+                 with col_controls:
+                     st.subheader("Find Graduate")
+                     # Prepare list for dropdown
+                     # Sort by name
+                     map_data_sorted = map_data.sort_values(by='name')
+                     options = map_data_sorted['name'].tolist()
+                     options.insert(0, "Select a Name...")
+                     
+                     target_name = st.selectbox("Select Name to Locate", options)
+                     
+                     if target_name != "Select a Name...":
+                         user_row = map_data_sorted[map_data_sorted['name'] == target_name].iloc[0]
+                         st.info(f"Locating {target_name}...")
+                         st.write(f"**Lives in:** {user_row['lives_in']}, {user_row['state']}, {user_row['country']}")
+                         
+                         # Set map center and zoom
+                         center_coords = [user_row['latitude'], user_row['longitude']]
+                         zoom_level = 10
+                         selected_user_loc = user_row
                  
-                 # Cluster
-                 marker_cluster = MarkerCluster(spiderfyOnMaxZoom=True).add_to(m)
-                 
-                 for _, row in map_data.iterrows():
-                     # Popup Content
-                     # Image
-                     img_uri = ""
-                     if row['photo_current']:
-                         try:
-                             b64 = base64.b64encode(row['photo_current']).decode('utf-8')
-                             img_uri = f'<img src="data:image/jpeg;base64,{b64}" width="100px" style="border-radius: 5px; margin-bottom: 5px;"><br>'
-                         except: pass
+                 with col_map:
+                     st.write(f"Showing **{len(map_data)}** graduates on the map.")
                      
-                     lives_in_str = f"{row['lives_in']}, {row['state']}" if row['lives_in'] else row['state']
+                     # 3. Create Map
+                     m = folium.Map(location=center_coords, zoom_start=zoom_level)
                      
-                     popup_html = f"""
-                     <div style="font-family: sans-serif; width: 200px;">
-                        {img_uri}
-                        <b style="font-size: 14px;">{row['name']}</b><br>
-                        <span style="color: #666; font-size: 12px;">{row['roll_no']}</span><br>
-                        <span style="color: #2e86de; font-weight: bold;">{row['branch']}</span><br>
-                        <span style="font-size: 12px;">📍 {lives_in_str}</span>
-                     </div>
-                     """
+                     # Cluster
+                     marker_cluster = MarkerCluster(spiderfyOnMaxZoom=True).add_to(m)
                      
-                     folium.CircleMarker(
-                        location=[row['latitude'], row['longitude']],
-                        radius=6,
-                        color='#e74c3c', # Red ring
-                        fill=True,
-                        fill_color='#e74c3c', # Red fill
-                        fill_opacity=0.8,
-                        popup=folium.Popup(popup_html, max_width=250)
-                     ).add_to(marker_cluster)
-                     
-                 st_folium(m, width=1000, height=600)
+                     for _, row in map_data.iterrows():
+                         # Popup Content
+                         # Image
+                         img_uri = ""
+                         if row['photo_current']:
+                             try:
+                                 # Optimize: Resize image for thumbnail in popup
+                                 resized_bytes = resize_image_for_map(row['photo_current'], 100)
+                                 if resized_bytes:
+                                     b64 = base64.b64encode(resized_bytes).decode('utf-8')
+                                     img_uri = f'<img src="data:image/jpeg;base64,{b64}" width="100px" style="border-radius: 5px; margin-bottom: 5px;"><br>'
+                             except: pass
+                         
+                         lives_in_str = f"{row['lives_in']}, {row['state']}" if row['lives_in'] else row['state']
+                         
+                         popup_html = f"""
+                         <div style="font-family: sans-serif; width: 200px;">
+                            {img_uri}
+                            <b style="font-size: 14px;">{row['name']}</b><br>
+                            <span style="color: #666; font-size: 12px;">{row['roll_no']}</span><br>
+                            <span style="color: #2e86de; font-weight: bold;">{row['branch']}</span><br>
+                            <span style="font-size: 12px;">📍 {lives_in_str}</span>
+                         </div>
+                         """
+                         
+                         # Highlight selected user with a different icon or just tooltip
+                         # For now, standard markers, but if selected, we could distinctively mark.
+                         # Let's just rely on centering.
+                         
+                         folium.CircleMarker(
+                            location=[row['latitude'], row['longitude']],
+                            radius=6,
+                            color='#e74c3c', # Red ring
+                            fill=True,
+                            fill_color='#e74c3c', # Red fill
+                            fill_opacity=0.8,
+                            popup=folium.Popup(popup_html, max_width=250)
+                         ).add_to(marker_cluster)
+                         
+                     st_folium(m, width=800, height=600)
                  
         else:
             if loc_df.empty:
@@ -955,6 +1117,8 @@ else:
         with tab4:
              if 'hostel' in df.columns:
                 draw_pareto(df, 'hostel', 'Graduates by Hostel')
+
+
 
     elif view_mode == "Items of Interest":
         st.header("📌 Items of Interest")
