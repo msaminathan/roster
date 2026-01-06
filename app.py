@@ -916,8 +916,8 @@ else:
             if map_data.empty:
                  st.warning("No location data found for the selected graduates.")
             else:
-                 # Layout: Map (Left), Controls (Right)
-                 col_map, col_controls = st.columns([3, 1])
+                # Layout: Map (Left), Controls (Right)
+                 col_map, col_controls = st.columns([4, 1])
                  
                  selected_user_loc = None
                  zoom_level = 2
@@ -946,8 +946,9 @@ else:
                  with col_map:
                      st.write(f"Showing **{len(map_data)}** graduates on the map.")
                      
-                     # 3. Create Map
-                     m = folium.Map(location=center_coords, zoom_start=zoom_level)
+                     # 3. Create Map (Simple Version)
+                     m = folium.Map(location=center_coords, zoom_start=zoom_level, tiles='OpenStreetMap')
+                     
                      
                      # Cluster
                      marker_cluster = MarkerCluster(spiderfyOnMaxZoom=True).add_to(m)
@@ -999,7 +1000,9 @@ else:
                          else:
                              marker.add_to(marker_cluster)
                          
-                     st_folium(m, width=800, height=600)
+                     # Render Map
+                     # Using width=None allows the map to fill the column width responsive
+                     st_folium(m, width=1000, height=600)
                  
         else:
             if loc_df.empty:
