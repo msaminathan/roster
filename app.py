@@ -1302,7 +1302,7 @@ else:
                     if row['photo']:
                         img = get_image_from_blob(row['photo'])
                         if img:
-                            st.image(img, caption=row['title'], width=400) # Reasonable max width
+                            st.image(img, caption=row['title']) # Display at original size
 
                     if row['link']:
                         st.markdown(f"🔗 [Link]({row['link']})")
