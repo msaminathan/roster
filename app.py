@@ -1148,13 +1148,13 @@ else:
             except:
                 return pd.DataFrame()
 
-        def create_post(roll_no, author_name, title, description, link):
+        def create_post(roll_no, author_name, title, description, link, photo):
             conn = get_db_connection()
             if not conn: return False
             cursor = conn.cursor()
             try:
-                sql = "INSERT INTO posts (roll_no, author_name, title, description, link) VALUES (%s, %s, %s, %s, %s)"
-                cursor.execute(sql, (roll_no, author_name, title, description, link))
+                sql = "INSERT INTO posts (roll_no, author_name, title, description, link, photo) VALUES (%s, %s, %s, %s, %s, %s)"
+                cursor.execute(sql, (roll_no, author_name, title, description, link, photo))
                 conn.commit()
                 return True
             except Exception as e:
@@ -1164,13 +1164,17 @@ else:
                 cursor.close()
                 conn.close()
 
-        def update_post_db(post_id, title, description, link):
+        def update_post_db(post_id, title, description, link, photo):
             conn = get_db_connection()
             if not conn: return False
             cursor = conn.cursor()
             try:
-                sql = "UPDATE posts SET title=%s, description=%s, link=%s WHERE id=%s"
-                cursor.execute(sql, (title, description, link, post_id))
+                if photo is not None:
+                    sql = "UPDATE posts SET title=%s, description=%s, link=%s, photo=%s WHERE id=%s"
+                    cursor.execute(sql, (title, description, link, photo, post_id))
+                else:
+                    sql = "UPDATE posts SET title=%s, description=%s, link=%s WHERE id=%s"
+                    cursor.execute(sql, (title, description, link, post_id))
                 conn.commit()
                 return True
             except Exception as e:
@@ -1203,13 +1207,18 @@ else:
                 title = st.text_input("Title", max_chars=255)
                 description = st.text_area("Description")
                 link = st.text_input("Link (Optional)")
+                photo_file = st.file_uploader("Upload Photo (Optional)", type=['jpg', 'jpeg', 'png'])
                 
                 if st.form_submit_button("Post Item"):
                     if not title:
                         st.error("Title is required.")
                     else:
+                        photo_bytes = None
+                        if photo_file:
+                            photo_bytes = photo_file.getvalue()
+
                         c_user = st.session_state['user_info']
-                        success = create_post(c_user['roll_no'], c_user['name'], title, description, link)
+                        success = create_post(c_user['roll_no'], c_user['name'], title, description, link, photo_bytes)
                         if success:
                             st.success("Item posted!")
                             st.rerun()
@@ -1221,11 +1230,23 @@ else:
                 description = st.text_area("Description", value=post_row['description'])
                 link = st.text_input("Link (Optional)", value=post_row['link'] if post_row['link'] else "")
                 
+                st.markdown("Current Photo:")
+                if post_row['photo']:
+                     st.image(get_image_from_blob(post_row['photo']), width=100)
+                else:
+                    st.text("No photo uploaded")
+
+                photo_file = st.file_uploader("Change Photo (Optional)", type=['jpg', 'jpeg', 'png'])
+                
                 if st.form_submit_button("Save Changes"):
                     if not title:
                         st.error("Title is required.")
                     else:
-                        success = update_post_db(post_row['id'], title, description, link)
+                        photo_bytes = None
+                        if photo_file:
+                            photo_bytes = photo_file.getvalue()
+                            
+                        success = update_post_db(post_row['id'], title, description, link, photo_bytes)
                         if success:
                             st.success("Item updated!")
                             st.rerun()
@@ -1278,6 +1299,11 @@ else:
                     if row['description']:
                         st.write(row['description'])
                     
+                    if row['photo']:
+                        img = get_image_from_blob(row['photo'])
+                        if img:
+                            st.image(img, caption=row['title'], width=400) # Reasonable max width
+
                     if row['link']:
                         st.markdown(f"🔗 [Link]({row['link']})")
 
