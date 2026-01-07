@@ -951,7 +951,11 @@ else:
                      
                      
                      # Cluster
-                     marker_cluster = MarkerCluster(spiderfyOnMaxZoom=True).add_to(m)
+                     marker_cluster = MarkerCluster(
+                         spiderfyOnMaxZoom=True,
+                         spiderfyDistanceMultiplier=2,
+                         zoomToBoundsOnClick=True
+                     ).add_to(m)
                      
                      for _, row in map_data.iterrows():
                          # Popup Content
