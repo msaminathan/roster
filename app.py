@@ -897,122 +897,273 @@ else:
                  st.warning(f"You can only edit your own details (Roll No: {current_user_roll}).")
 
     elif view_mode == "Global Map":
-        st.header(f"🌍 Global Alumni Map - {selected_branch}")
-        st.markdown("Map shows locations of graduates based on their 'Lives In', 'State', and 'Country'. Overlapping markers are clustered; click to expand.")
+        # Use placeholder for dynamic header based on selection
+        header_ph = st.empty()
+
+        import random # Import locally to avoid massive file diff just for top-level import
+
+        # Hostel Coordinates (Refined Zones)
+        # Himalaya Zone (Central): Godavari, Narmada, Saraswati, Tapti, Pampa
+        # Ganga Zone (South-East): Ganga, Jamuna, Mandakini, Alakananda
+        # Stadium/North Zone: Cauvery, Krishna, Mahanadi, Tamiraparani, Brahmaputra
+        # Ladies: Sarayu/Sharavati (Located distinctly)
         
-        # 1. Fetch Location Data (Cached)
-        loc_df = get_all_location_data()
+        HOSTEL_COORDINATES = {
+            # Himalaya Zone (Approx 12.9915, 80.2335)
+            "Godavari": [12.9918, 80.2335],
+            "Narmada": [12.9912, 80.2335],
+            "Saraswati": [12.9915, 80.2338],
+            "Tapti": [12.9915, 80.2332],
+            "Pampa": [12.9918, 80.2332],
+            "Sindhu": [12.9912, 80.2338], # Assuming central
+            
+            # Ganga Zone (Approx 12.9870, 80.2385)
+            "Ganga": [12.9870, 80.2385],
+            "Jamuna": [12.9872, 80.2382],
+            "Alakananda": [12.9868, 80.2388],
+            "Mandakini": [12.9875, 80.2380],
 
+            # Stadium/North Zone (Approx 12.9940, 80.2340)
+            "Cauvery": [12.9945, 80.2340],
+            "Krishna": [12.9940, 80.2345],
+            "Mahanadi": [12.9940, 80.2335],
+            "Tamiraparani": [12.9948, 80.2340],
+            "Brahmaputra": [12.9950, 80.2330],
             
-        if not loc_df.empty and not filtered_df.empty:
-            # 2. Merge with Filtered Graduates
-            # filtered_df has the current filters applied (Branch, Search)
-            # We merge on roll_no
-            map_data = pd.merge(filtered_df, loc_df[['roll_no', 'latitude', 'longitude']], on='roll_no', how='inner')
-            
-            # Filter out invalid lat/lon
-            map_data = map_data.dropna(subset=['latitude', 'longitude'])
-            
-            if map_data.empty:
-                 st.warning("No location data found for the selected graduates.")
-            else:
-                # Layout: Map (Left), Controls (Right)
-                 col_map, col_controls = st.columns([4, 1])
-                 
-                 selected_user_loc = None
-                 zoom_level = 2
-                 center_coords = [20, 0]
+            # Ladies Hostels (Usually distinct, typically Sarayu is old ladies hostel)
+            # Placing slightly apart
+            "Sarayu": [12.9930, 80.2325], 
+            "Sharavati": [12.9935, 80.2325]
+        }
+        
+        # View Toggle
+        map_view_type = st.radio("Map View Mode:", ["By Residency (Global)", "By Hostel (Campus)"], horizontal=True)
 
-                 with col_controls:
-                     st.subheader("Find Graduate")
-                     # Prepare list for dropdown
-                     # Sort by name
-                     map_data_sorted = map_data.sort_values(by='name')
-                     options = map_data_sorted['name'].tolist()
-                     options.insert(0, "Select a Name...")
+        if map_view_type == "By Residency (Global)":
+            header_ph.header(f"🌍 Global Alumni Map - {selected_branch}")
+            st.markdown("Map shows locations of graduates based on their 'Lives In', 'State', and 'Country'. Overlapping markers are clustered; click to expand.")
+            
+            # 1. Fetch Location Data (Cached)
+            loc_df = get_all_location_data()
+
+                
+            if not loc_df.empty and not filtered_df.empty:
+                # 2. Merge with Filtered Graduates
+                # filtered_df has the current filters applied (Branch, Search)
+                # We merge on roll_no
+                map_data = pd.merge(filtered_df, loc_df[['roll_no', 'latitude', 'longitude']], on='roll_no', how='inner')
+                
+                # Filter out invalid lat/lon
+                map_data = map_data.dropna(subset=['latitude', 'longitude'])
+                
+                if map_data.empty:
+                     st.warning("No location data found for the selected graduates.")
+                else:
+                    # Layout: Map (Left), Controls (Right)
+                     col_map, col_controls = st.columns([4, 1])
                      
-                     target_name = st.selectbox("Select Name to Locate", options)
-                     
-                     if target_name != "Select a Name...":
-                         user_row = map_data_sorted[map_data_sorted['name'] == target_name].iloc[0]
-                         st.info(f"Locating {target_name}...")
-                         st.write(f"**Lives in:** {user_row['lives_in']}, {user_row['state']}, {user_row['country']}")
+                     selected_user_loc = None
+                     zoom_level = 2
+                     center_coords = [20, 0]
+
+                     with col_controls:
+                         st.subheader("Find Graduate")
+                         # Prepare list for dropdown
+                         # Sort by name
+                         map_data_sorted = map_data.sort_values(by='name')
+                         options = map_data_sorted['name'].tolist()
+                         options.insert(0, "Select a Name...")
                          
-                         # Set map center and zoom
-                         center_coords = [user_row['latitude'], user_row['longitude']]
-                         zoom_level = 10
-                         selected_user_loc = user_row
-                 
-                 with col_map:
-                     st.write(f"Showing **{len(map_data)}** graduates on the map.")
+                         target_name = st.selectbox("Select Name to Locate", options)
+                         
+                         if target_name != "Select a Name...":
+                             user_row = map_data_sorted[map_data_sorted['name'] == target_name].iloc[0]
+                             st.info(f"Locating {target_name}...")
+                             st.write(f"**Lives in:** {user_row['lives_in']}, {user_row['state']}, {user_row['country']}")
+                             
+                             # Set map center and zoom
+                             center_coords = [user_row['latitude'], user_row['longitude']]
+                             zoom_level = 10
+                             selected_user_loc = user_row
                      
-                     # 3. Create Map (Simple Version)
-                     m = folium.Map(location=center_coords, zoom_start=zoom_level, tiles='OpenStreetMap')
+                     with col_map:
+                         st.write(f"Showing **{len(map_data)}** graduates on the map.")
+                         
+                         # 3. Create Map (Simple Version)
+                         m = folium.Map(location=center_coords, zoom_start=zoom_level, tiles='OpenStreetMap')
+                         
+                         
+                         # Cluster
+                         marker_cluster = MarkerCluster(
+                             spiderfyOnMaxZoom=True,
+                             spiderfyDistanceMultiplier=2,
+                             zoomToBoundsOnClick=True
+                         ).add_to(m)
+                         
+                         for _, row in map_data.iterrows():
+                             # Popup Content
+                             # Image
+                             img_uri = ""
+                             if row['photo_current']:
+                                 try:
+                                     # Optimize: Resize image for thumbnail in popup
+                                     resized_bytes = resize_image_for_map(row['photo_current'], 100)
+                                     if resized_bytes:
+                                         b64 = base64.b64encode(resized_bytes).decode('utf-8')
+                                         img_uri = f'<img src="data:image/jpeg;base64,{b64}" width="100px" style="border-radius: 5px; margin-bottom: 5px;"><br>'
+                                 except: pass
+                             
+                             lives_in_str = f"{row['lives_in']}, {row['state']}" if row['lives_in'] else row['state']
+                             
+                             popup_html = f"""
+                             <div style="font-family: sans-serif; width: 200px;">
+                                {img_uri}
+                                <b style="font-size: 14px;">{row['name']}</b><br>
+                                <span style="color: #666; font-size: 12px;">{row['roll_no']}</span><br>
+                                <span style="color: #2e86de; font-weight: bold;">{row['branch']}</span><br>
+                                <span style="font-size: 12px;">📍 {lives_in_str}</span>
+                             </div>
+                             """
+                             
+                             # Special handling for selected user to ensure visibility and popup
+                             is_selected = False
+                             if selected_user_loc is not None and row['roll_no'] == selected_user_loc['roll_no']:
+                                 is_selected = True
+                                 
+                             # Create Marker
+                             marker = folium.CircleMarker(
+                                location=[row['latitude'], row['longitude']],
+                                radius=6 if not is_selected else 9, # Larger if selected
+                                color='#e74c3c' if not is_selected else '#27ae60', # Green if selected
+                                fill=True,
+                                fill_color='#e74c3c' if not is_selected else '#27ae60',
+                                fill_opacity=0.8,
+                                popup=folium.Popup(popup_html, max_width=250, show=is_selected) # Auto open if selected
+                             )
+                             
+                             if is_selected:
+                                 # Add directly to map to behave as "overlay" and ensure popup opens unclustered
+                                 marker.add_to(m)
+                             else:
+                                 marker.add_to(marker_cluster)
+                             
+                         # Render Map
+                         # Using width=None allows the map to fill the column width responsive
+                         st_folium(m, width=1000, height=600, key=f"map_global_{selected_branch}")
                      
-                     
-                     # Cluster
-                     marker_cluster = MarkerCluster(
-                         spiderfyOnMaxZoom=True,
+            else:
+                if loc_df.empty:
+                    st.warning("Location data not loaded from database.")
+                else:
+                    st.info("No graduates found for current filter.")
+
+        elif map_view_type == "By Hostel (Campus)":
+            st.markdown("Map shows graduates clustered by their Hostel. Click clusters to spiral view.")
+            
+            # Prepare Hostel Data
+            # Start with filtered_df
+            hostel_df = filtered_df.copy()
+            
+            # Filter valid hostels
+            # Check if hostel is in our coordinates map or generic
+            # Only keep rows where hostel is present
+            hostel_df = hostel_df.dropna(subset=['hostel'])
+            hostel_df = hostel_df[hostel_df['hostel'] != ""]
+            
+            # Get list of unique hostels for dropdown
+            unique_hostels = sorted(hostel_df['hostel'].unique().tolist())
+            # User Request: Remove "All Hostels" to prevent flickering/performance issues
+            # unique_hostels.insert(0, "All Hostels") 
+            
+            # Layout
+            col_map_h, col_controls_h = st.columns([4, 1])
+            
+            selected_hostel_filter = unique_hostels[0] if unique_hostels else None
+            
+            with col_controls_h:
+                st.subheader("Filter Hostel")
+                if unique_hostels:
+                    selected_hostel_filter = st.selectbox("Select Hostel", unique_hostels)
+                else:
+                    st.write("No hostels data available.")
+                
+            # Update Header with Selection
+            if selected_hostel_filter:
+                header_ph.header(f"🌍 Global Alumni Map - {selected_hostel_filter}")
+
+            # Apply Filter
+            # Always filter by the specific hostel
+            if selected_hostel_filter:
+                hostel_df = hostel_df[hostel_df['hostel'] == selected_hostel_filter]
+
+            if hostel_df.empty:
+                st.info("No graduates found for this hostel selection.")
+            else:
+                with col_map_h:
+                    # Center on specific hostel zone if possible, or campus center
+                    # We can pick the coordinate of the selected hostel to center map
+                    center_h = [12.9915, 80.2336]
+                    if selected_hostel_filter and selected_hostel_filter in HOSTEL_COORDINATES:
+                        center_h = HOSTEL_COORDINATES[selected_hostel_filter]
+
+                    m_hostel = folium.Map(location=center_h, zoom_start=16, tiles='OpenStreetMap')
+                    
+                    # Cluster
+                    # We want the spiral effect, so we use MarkerCluster with specific options
+                    # disableClusteringAtZoom can be set high so it always spiderfies or clusters
+                    
+                    marker_cluster_h = MarkerCluster(
+                        spiderfyOnMaxZoom=True,
                          spiderfyDistanceMultiplier=2,
-                         zoomToBoundsOnClick=True
-                     ).add_to(m)
-                     
-                     for _, row in map_data.iterrows():
-                         # Popup Content
-                         # Image
-                         img_uri = ""
-                         if row['photo_current']:
+                         zoomToBoundsOnClick=True # Enable zoom interactions, let spiderfy take over at max zoom
+                    ).add_to(m_hostel)
+                    
+                    for _, row in hostel_df.iterrows():
+                        h_name = row['hostel']
+                        
+                        # Get coords
+                        # Strip whitespace and title case just in case
+                        h_key = h_name.strip() if h_name else ""
+                        
+                        # Fallback coords if not in list (center of campus + small jitter?)
+                        base_coords = HOSTEL_COORDINATES.get(h_key, [12.9915, 80.2336])
+                        
+                        # Add Jitter (Approx +/- 5-10 meters)
+                        # Use deterministic seed based on Roll No to prevent flickering on reruns
+                        # 0.0001 deg ~ 11m
+                        rng = random.Random(row['roll_no']) 
+                        lat_jitter = rng.uniform(-0.0001, 0.0001)
+                        lon_jitter = rng.uniform(-0.0001, 0.0001)
+                        
+                        coords = [base_coords[0] + lat_jitter, base_coords[1] + lon_jitter]
+                        
+                        # Popup
+                        img_uri = ""
+                        if row['photo_current']:
                              try:
-                                 # Optimize: Resize image for thumbnail in popup
                                  resized_bytes = resize_image_for_map(row['photo_current'], 100)
                                  if resized_bytes:
                                      b64 = base64.b64encode(resized_bytes).decode('utf-8')
                                      img_uri = f'<img src="data:image/jpeg;base64,{b64}" width="100px" style="border-radius: 5px; margin-bottom: 5px;"><br>'
                              except: pass
-                         
-                         lives_in_str = f"{row['lives_in']}, {row['state']}" if row['lives_in'] else row['state']
-                         
-                         popup_html = f"""
+                        
+                        popup_html = f"""
                          <div style="font-family: sans-serif; width: 200px;">
                             {img_uri}
                             <b style="font-size: 14px;">{row['name']}</b><br>
                             <span style="color: #666; font-size: 12px;">{row['roll_no']}</span><br>
-                            <span style="color: #2e86de; font-weight: bold;">{row['branch']}</span><br>
-                            <span style="font-size: 12px;">📍 {lives_in_str}</span>
+                            <span style="color: #e67e22; font-weight: bold;">Hostel: {h_name}</span><br>
+                            <span style="font-size: 12px;">{row['branch']}</span>
                          </div>
                          """
-                         
-                         # Special handling for selected user to ensure visibility and popup
-                         is_selected = False
-                         if selected_user_loc is not None and row['roll_no'] == selected_user_loc['roll_no']:
-                             is_selected = True
-                             
-                         # Create Marker
-                         marker = folium.CircleMarker(
-                            location=[row['latitude'], row['longitude']],
-                            radius=6 if not is_selected else 9, # Larger if selected
-                            color='#e74c3c' if not is_selected else '#27ae60', # Green if selected
-                            fill=True,
-                            fill_color='#e74c3c' if not is_selected else '#27ae60',
-                            fill_opacity=0.8,
-                            popup=folium.Popup(popup_html, max_width=250, show=is_selected) # Auto open if selected
-                         )
-                         
-                         if is_selected:
-                             # Add directly to map to behave as "overlay" and ensure popup opens unclustered
-                             marker.add_to(m)
-                         else:
-                             marker.add_to(marker_cluster)
-                         
-                     # Render Map
-                     # Using width=None allows the map to fill the column width responsive
-                     st_folium(m, width=1000, height=600)
-                 
-        else:
-            if loc_df.empty:
-                st.warning("Location data not loaded from database.")
-            else:
-                st.info("No graduates found for current filter.")
+                        
+                        folium.Marker(
+                            location=coords,
+                            popup=folium.Popup(popup_html, max_width=250),
+                            icon=folium.Icon(color='blue', icon='user', prefix='fa')
+                        ).add_to(marker_cluster_h)
+
+                    st_folium(m_hostel, width=1000, height=600, key=f"map_hostel_{selected_hostel_filter}", returned_objects=[])
 
     elif view_mode == "Statistics":
         st.header("🎓 Statistics & Pareto Charts")
