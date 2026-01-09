@@ -908,33 +908,33 @@ else:
         # Stadium/North Zone: Cauvery, Krishna, Mahanadi, Tamiraparani, Brahmaputra
         # Ladies: Sarayu/Sharavati (Located distinctly)
         
-        HOSTEL_COORDINATES = {
-            # Himalaya Zone (Approx 12.9915, 80.2335)
-            "Godavari": [12.9918, 80.2335],
-            "Narmada": [12.9912, 80.2335],
-            "Saraswati": [12.9915, 80.2338],
-            "Tapti": [12.9915, 80.2332],
-            "Pampa": [12.9918, 80.2332],
-            "Sindhu": [12.9912, 80.2338], # Assuming central
+        @st.cache_data(ttl=3600)
+        def get_hostel_coordinates_from_db():
+            conn = get_db_connection()
+            coords = {}
+            if not conn:
+                return coords
             
-            # Ganga Zone (Approx 12.9870, 80.2385)
-            "Ganga": [12.9870, 80.2385],
-            "Jamuna": [12.9872, 80.2382],
-            "Alakananda": [12.9868, 80.2388],
-            "Mandakini": [12.9875, 80.2380],
+            cursor = conn.cursor()
+            try:
+                cursor.execute("SELECT hostel_name, latitude, longitude FROM hostel_coordinates")
+                rows = cursor.fetchall()
+                for row in rows:
+                    # Assuming schema: hostel_name, latitude, longitude
+                    # row[0] is name, row[1] is lat, row[2] is lon
+                    # Convert Decimals to float if necessary, though Folium handles floats best
+                    h_name = row[0].strip()
+                    lat = float(row[1])
+                    lon = float(row[2])
+                    coords[h_name] = [lat, lon]
+            except Exception as e:
+                print(f"Error fetching hostel coordinates: {e}")
+            finally:
+                cursor.close()
+                conn.close()
+            return coords
 
-            # Stadium/North Zone (Approx 12.9940, 80.2340)
-            "Cauvery": [12.9945, 80.2340],
-            "Krishna": [12.9940, 80.2345],
-            "Mahanadi": [12.9940, 80.2335],
-            "Tamiraparani": [12.9948, 80.2340],
-            "Brahmaputra": [12.9950, 80.2330],
-            
-            # Ladies Hostels (Usually distinct, typically Sarayu is old ladies hostel)
-            # Placing slightly apart
-            "Sarayu": [12.9930, 80.2325], 
-            "Sharavati": [12.9935, 80.2325]
-        }
+        HOSTEL_COORDINATES = get_hostel_coordinates_from_db()
         
         # View Toggle
         map_view_type = st.radio("Map View Mode:", ["By Residency (Global)", "By Hostel (Campus)"], horizontal=True)
