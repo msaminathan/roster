@@ -1020,7 +1020,8 @@ else:
                                 {img_uri}
                                 <b style="font-size: 14px;">{row['name']}</b><br>
                                 <span style="color: #666; font-size: 12px;">{row['roll_no']}</span><br>
-                                <span style="color: #2e86de; font-weight: bold;">{row['branch']}</span><br>
+                                <span style="color: #2e86de; font-weight: bold;">Branch: {row['branch']}</span><br>
+                                <span style="font-size: 12px;">Hostel: {row['hostel']}</span><br>
                                 <span style="font-size: 12px;">📍 {lives_in_str}</span>
                              </div>
                              """
@@ -1089,7 +1090,10 @@ else:
                 
             # Update Header with Selection
             if selected_hostel_filter:
-                header_ph.header(f"🌍 Global Alumni Map - {selected_hostel_filter}")
+                if selected_branch != "All":
+                    header_ph.header(f"🌍 Global Alumni Map - {selected_hostel_filter} - {selected_branch}")
+                else:
+                    header_ph.header(f"🌍 Global Alumni Map - {selected_hostel_filter}")
 
             # Apply Filter
             # Always filter by the specific hostel
@@ -1153,7 +1157,7 @@ else:
                             <b style="font-size: 14px;">{row['name']}</b><br>
                             <span style="color: #666; font-size: 12px;">{row['roll_no']}</span><br>
                             <span style="color: #e67e22; font-weight: bold;">Hostel: {h_name}</span><br>
-                            <span style="font-size: 12px;">{row['branch']}</span>
+                            <span style="color: #2e86de; font-weight: bold;">Branch: {row['branch']}</span>
                          </div>
                          """
                         
