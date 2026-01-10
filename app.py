@@ -1320,6 +1320,7 @@ else:
                 conn.close()
 
         def update_post_db(post_id, title, description, link, photo):
+            post_id = int(post_id)
             conn = get_db_connection()
             if not conn: return False
             cursor = conn.cursor()
@@ -1340,6 +1341,7 @@ else:
                 conn.close()
 
         def delete_post_db(post_id):
+            post_id = int(post_id)
             conn = get_db_connection()
             if not conn: return False
             cursor = conn.cursor()
