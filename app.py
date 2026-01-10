@@ -1427,10 +1427,34 @@ else:
         
         posts_df = get_posts()
         
+
         if posts_df.empty:
             st.info("No items posted yet.")
         else:
-            for idx, row in posts_df.iterrows():
+            # Dropdown Filter Logic
+            # Format: 'Author Name - Created At - Title'
+            # Assuming created_at is datetime or string. If datetime, might want to format it.
+            # Using index (which is row index in filtered df) or ID to select. Storing ID is safer.
+            
+            # Helper to create label
+            def format_option(row):
+                 return f"{row['author_name']} - {row['created_at']} - {row['title']}"
+            
+            # Create a dictionary mapping label -> ID
+            options_map = {format_option(row): row['id'] for _, row in posts_df.iterrows()}
+            
+            # Dropdown
+            # Default is the first one (latest, since posts_df is ordered by created_at DESC)
+            options_list = list(options_map.keys())
+            selected_label = st.selectbox("Select Item:", options_list, index=0)
+            selected_id = options_map[selected_label]
+            
+            # Filter DataFrame
+            selected_post_df = posts_df[posts_df['id'] == selected_id]
+            
+            if not selected_post_df.empty:
+                row = selected_post_df.iloc[0]
+                
                 with st.container(border=True):
                     # Header: Title and Actions
                     c_title, c_actions = st.columns([0.85, 0.15])
@@ -1461,6 +1485,7 @@ else:
 
                     if row['link']:
                         st.markdown(f"🔗 [Link]({row['link']})")
+
 
     elif view_mode == "Missing Contacts":
         st.markdown("<h1 style='text-align: center; color: #d35400;'>🔍 Help Us Find 🔍</h1>", unsafe_allow_html=True)
