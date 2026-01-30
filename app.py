@@ -550,7 +550,7 @@ selected_branch = st.sidebar.selectbox("Filter by Branch", unique_branches)
 # Sort Options
 sort_option = st.sidebar.selectbox("Sort By", ["Name (A-Z)", "Country, City", "Roll No (Ascending)"])
 
-view_mode = st.sidebar.radio("View Option", ["Grid View", "List View", "Table (Text)", "Table (with Icons)", "Statistics", "Global Map", "Items of Interest", "Missing Contacts", "In Memoriam", "Reports & Downloads", "About this App"], key="view_mode_selection")
+view_mode = st.sidebar.radio("View Option", ["Grid View", "List View", "Table (Text)", "Table (with Icons)", "Statistics", "Global Map", "Items of Interest", "Missing Contacts", "In Memoriam", "Reunion Photo Album", "Reports & Downloads", "About this App"], key="view_mode_selection")
 
 # Filtering
 filtered_df = df.copy()
@@ -1626,6 +1626,112 @@ else:
                             <div style="margin-top:10px; font-size:1.5em;">💐</div>
                         </div>
                         """, unsafe_allow_html=True)
+
+    elif view_mode == "Reunion Photo Album":
+        st.header("📸 Reunion Photo Album")
+        st.markdown("Share your memories with the batch! Upload photos (max 1MB).")
+        st.markdown("---")
+
+        # Database Helpers for Album
+        def get_all_photos():
+            conn = get_db_connection()
+            if not conn: return []
+            cursor = conn.cursor(dictionary=True)
+            try:
+                cursor.execute("SELECT * FROM reunion_photos ORDER BY created_at DESC")
+                return cursor.fetchall()
+            except: return []
+            finally: 
+                cursor.close()
+                conn.close()
+
+        def save_album_photo(roll_no, uploader_name, photo_bytes, caption):
+            conn = get_db_connection()
+            if not conn: return False
+            cursor = conn.cursor()
+            try:
+                sql = "INSERT INTO reunion_photos (roll_no, uploader_name, photo, caption) VALUES (%s, %s, %s, %s)"
+                cursor.execute(sql, (roll_no, uploader_name, photo_bytes, caption))
+                conn.commit()
+                return True
+            except Exception as e:
+                st.error(f"Error saving photo: {e}")
+                return False
+            finally:
+                cursor.close()
+                conn.close()
+
+        def delete_album_photo(photo_id):
+            conn = get_db_connection()
+            if not conn: return False
+            cursor = conn.cursor()
+            try:
+                sql = "DELETE FROM reunion_photos WHERE id = %s"
+                cursor.execute(sql, (photo_id,))
+                conn.commit()
+                return True
+            except: return False
+            finally:
+                cursor.close()
+                conn.close()
+
+        # UI: Upload Section
+        if st.session_state.get('logged_in'):
+            with st.expander("📤 Upload New Photo", expanded=False):
+                with st.form("upload_photo_form"):
+                    caption = st.text_input("Caption (Optional)", max_chars=100)
+                    photo_file = st.file_uploader("Choose a Photo (Max 1MB)", type=['jpg', 'jpeg', 'png'])
+                    
+                    if st.form_submit_button("Upload Photo"):
+                        if not photo_file:
+                            st.error("Please select a file.")
+                            # Check size (1MB = 1048576 bytes)
+                        elif photo_file.size > 1048576:
+                            st.error("File size exceeds 1MB limit. Please upload a smaller file.")
+                        else:
+                            photo_bytes = photo_file.getvalue()
+                            user = st.session_state['user_info']
+                            if save_album_photo(user['roll_no'], user['name'], photo_bytes, caption):
+                                st.success("Photo uploaded successfully!")
+                                st.rerun()
+        else:
+            st.info("Please login to upload photos.")
+
+        # UI: Gallery Section
+        photos = get_all_photos()
+        if not photos:
+            st.info("No photos shared yet. Be the first!")
+        else:
+            st.write(f"Showing {len(photos)} photos")
+            # Grid Layout
+            cols = st.columns(3)
+            current_user_roll = st.session_state['user_info']['roll_no'] if st.session_state.get('logged_in') else None
+
+            for idx, row in enumerate(photos):
+                col = cols[idx % 3]
+                with col:
+                    # Render Image
+                    img = get_image_from_blob(row['photo'])
+                    if img:
+                        # Use st.image which is clickable/expandable by default
+                        st.image(img, use_container_width=True) 
+                        
+                        # Info / Actions
+                        c_caps, c_del = st.columns([0.85, 0.15])
+                        with c_caps:
+                            if row['caption']:
+                                st.caption(f"**{row['caption']}**")
+                            st.caption(f"By: {row['uploader_name']}")
+                        
+                        with c_del:
+                            # Delete Button (Only for owner)
+                            if current_user_roll == row['roll_no']:
+                                if st.button("🗑️", key=f"del_alb_{row['id']}", help="Delete"):
+                                    if delete_album_photo(row['id']):
+                                        st.rerun()
+                    else:
+                        st.error("Error loading image")
+                    st.divider()
 
     elif view_mode == "Reports & Downloads":
         st.header("📊 Reports & Downloads")
