@@ -1629,19 +1629,36 @@ else:
 
     elif view_mode == "Reunion Photo Album":
         st.header("📸 Reunion Photo Album")
-        st.markdown("Share your memories with the batch! Upload photos (max 1MB).")
+        st.markdown("Share your memories with the batch! Upload photos (max 5MB).")
         st.markdown("---")
 
+        # Initialize Session State for Pagination
+        if 'reunion_display_count' not in st.session_state:
+            st.session_state['reunion_display_count'] = 10
+
         # Database Helpers for Album
-        def get_all_photos():
+        def get_photos_paginated(limit):
             conn = get_db_connection()
             if not conn: return []
             cursor = conn.cursor(dictionary=True)
             try:
-                cursor.execute("SELECT * FROM reunion_photos ORDER BY created_at DESC")
+                # Use LIMIT
+                cursor.execute("SELECT * FROM reunion_photos ORDER BY created_at DESC LIMIT %s", (limit,))
                 return cursor.fetchall()
             except: return []
             finally: 
+                cursor.close()
+                conn.close()
+
+        def get_total_photo_count():
+            conn = get_db_connection()
+            if not conn: return 0
+            cursor = conn.cursor()
+            try:
+                cursor.execute("SELECT COUNT(*) FROM reunion_photos")
+                return cursor.fetchone()[0]
+            except: return 0
+            finally:
                 cursor.close()
                 conn.close()
 
@@ -1680,14 +1697,14 @@ else:
             with st.expander("📤 Upload New Photo", expanded=False):
                 with st.form("upload_photo_form"):
                     caption = st.text_input("Caption (Optional)", max_chars=100)
-                    photo_file = st.file_uploader("Choose a Photo (Max 1MB)", type=['jpg', 'jpeg', 'png'])
+                    photo_file = st.file_uploader("Choose a Photo (Max 5MB)", type=['jpg', 'jpeg', 'png'])
                     
                     if st.form_submit_button("Upload Photo"):
                         if not photo_file:
                             st.error("Please select a file.")
-                            # Check size (1MB = 1048576 bytes)
-                        elif photo_file.size > 1048576:
-                            st.error("File size exceeds 1MB limit. Please upload a smaller file.")
+                            # Check size (5MB = 5 * 1024 * 1024 bytes = 5,242,880 bytes)
+                        elif photo_file.size > 5242880:
+                            st.error("File size exceeds 5MB limit. Please upload a smaller file.")
                         else:
                             photo_bytes = photo_file.getvalue()
                             user = st.session_state['user_info']
@@ -1698,11 +1715,16 @@ else:
             st.info("Please login to upload photos.")
 
         # UI: Gallery Section
-        photos = get_all_photos()
+        total_photos = get_total_photo_count()
+        limit = st.session_state['reunion_display_count']
+        
+        photos = get_photos_paginated(limit)
+        
         if not photos:
             st.info("No photos shared yet. Be the first!")
         else:
-            st.write(f"Showing {len(photos)} photos")
+            st.write(f"Showing {len(photos)} of {total_photos} photos")
+            
             # Grid Layout
             cols = st.columns(3)
             current_user_roll = st.session_state['user_info']['roll_no'] if st.session_state.get('logged_in') else None
@@ -1732,6 +1754,12 @@ else:
                     else:
                         st.error("Error loading image")
                     st.divider()
+
+            # Load More Button
+            if len(photos) < total_photos:
+                if st.button("Load More Photos"):
+                    st.session_state['reunion_display_count'] += 10
+                    st.rerun()
 
     elif view_mode == "Reports & Downloads":
         st.header("📊 Reports & Downloads")
