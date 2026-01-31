@@ -1633,18 +1633,25 @@ else:
         st.markdown("---")
 
         # Initialize Session State for Pagination
-        if 'reunion_display_count' not in st.session_state:
-            st.session_state['reunion_display_count'] = 10
+        if 'album_page' not in st.session_state:
+            st.session_state['album_page'] = 0
 
         # Database Helpers for Album
-        def get_photos_paginated(limit):
+        def get_photos_paginated(limit, offset):
             conn = get_db_connection()
             if not conn: return []
             cursor = conn.cursor(dictionary=True)
             try:
-                # Use LIMIT
-                cursor.execute("SELECT * FROM reunion_photos ORDER BY created_at DESC LIMIT %s", (limit,))
-                return cursor.fetchall()
+                # Use LIMIT and OFFSET on 'photos' table
+                # Map columns: image_data -> photo, filename -> caption, upload_date -> created_at
+                # Missing: roll_no, uploader_name
+                cursor.execute("SELECT id, image_data as photo, filename as caption, upload_date as created_at FROM photos ORDER BY upload_date DESC LIMIT %s OFFSET %s", (limit, offset))
+                rows = cursor.fetchall()
+                # Add default values for missing columns to avoid UI errors
+                for row in rows:
+                    if 'uploader_name' not in row: row['uploader_name'] = 'Batchmate'
+                    if 'roll_no' not in row: row['roll_no'] = None
+                return rows
             except: return []
             finally: 
                 cursor.close()
@@ -1655,7 +1662,7 @@ else:
             if not conn: return 0
             cursor = conn.cursor()
             try:
-                cursor.execute("SELECT COUNT(*) FROM reunion_photos")
+                cursor.execute("SELECT COUNT(*) FROM photos")
                 return cursor.fetchone()[0]
             except: return 0
             finally:
@@ -1667,8 +1674,11 @@ else:
             if not conn: return False
             cursor = conn.cursor()
             try:
-                sql = "INSERT INTO reunion_photos (roll_no, uploader_name, photo, caption) VALUES (%s, %s, %s, %s)"
-                cursor.execute(sql, (roll_no, uploader_name, photo_bytes, caption))
+                # Insert into photos table
+                # caption -> filename (or generate one)
+                filename = caption if caption else f"upload_{int(time.time())}.jpg"
+                sql = "INSERT INTO photos (filename, image_data, upload_date) VALUES (%s, %s, NOW())"
+                cursor.execute(sql, (filename, photo_bytes))
                 conn.commit()
                 return True
             except Exception as e:
@@ -1683,7 +1693,7 @@ else:
             if not conn: return False
             cursor = conn.cursor()
             try:
-                sql = "DELETE FROM reunion_photos WHERE id = %s"
+                sql = "DELETE FROM photos WHERE id = %s"
                 cursor.execute(sql, (photo_id,))
                 conn.commit()
                 return True
@@ -1692,17 +1702,142 @@ else:
                 cursor.close()
                 conn.close()
 
-        # UI: Upload Section
+
+
+        # Custom CSS for Fancy Album
+        st.markdown("""
+        <style>
+        .photo-card {
+            background-color: white;
+            border-radius: 15px;
+            padding: 15px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.19), 0 6px 6px rgba(0,0,0,0.23);
+            transition: all 0.3s cubic-bezier(.25,.8,.25,1);
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .photo-card:hover {
+            transform: scale(1.02);
+            box-shadow: 0 14px 28px rgba(0,0,0,0.25), 0 10px 10px rgba(0,0,0,0.22);
+        }
+        .photo-caption {
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            font-size: 1.1em;
+            color: #333;
+            margin-top: 10px;
+            font-weight: 500;
+        }
+        .photo-meta {
+            font-size: 0.85em;
+            color: #777;
+            margin-top: 5px;
+            font-style: italic;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
+        # UI: Gallery Section (Moved Above Upload)
+        ITEMS_PER_PAGE = 10
+        total_photos = get_total_photo_count()
+        
+        # Calculate max pages
+        import math
+        total_pages = math.ceil(total_photos / ITEMS_PER_PAGE)
+        if total_pages == 0: total_pages = 1
+        
+        # Validate current page
+        if st.session_state['album_page'] >= total_pages:
+             st.session_state['album_page'] = total_pages - 1
+        if st.session_state['album_page'] < 0:
+             st.session_state['album_page'] = 0
+             
+        current_page = st.session_state['album_page']
+        offset = current_page * ITEMS_PER_PAGE
+        
+        # Fetch Photos
+        photos = get_photos_paginated(ITEMS_PER_PAGE, offset)
+        
+        if not photos:
+            st.info("No photos shared yet. Be the first!")
+        else:
+            # Pagination Controls (Top)
+            c_prev, c_info, c_next = st.columns([1, 2, 1])
+            with c_prev:
+                if current_page > 0:
+                    if st.button("⬅️ Previous 10", key="prev_top"):
+                        st.session_state['album_page'] -= 1
+                        st.rerun()
+            with c_info:
+                st.markdown(f"<p style='text-align: center; font-weight: bold;'>Page {current_page + 1} of {total_pages}</p>", unsafe_allow_html=True)
+            with c_next:
+                if (current_page + 1) < total_pages:
+                    if st.button("Next 10 ➡️", key="next_top"):
+                        st.session_state['album_page'] += 1
+                        st.rerun()
+
+            st.write("") # Spacer
+
+            # GRID DISPLAY
+            # We want rows of 2 or 3. Let's do 2 columns for "Big/Fancy" feel or 3 for efficiency. 
+            # User said "fancy", so larger images (2 cols) might be better, but 3 is standard. Let's stick to 3 but styled.
+            cols = st.columns(2) 
+            current_user_roll = st.session_state['user_info']['roll_no'] if st.session_state.get('logged_in') else None
+
+            for idx, row in enumerate(photos):
+                col = cols[idx % 2]
+                with col:
+                    st.markdown('<div class="photo-card">', unsafe_allow_html=True)
+                    
+                    # Render Image
+                    img = get_image_from_blob(row['photo'])
+                    if img:
+                        st.image(img, width="stretch")
+                        
+                        caption_html = ""
+                        if row['caption']:
+                            caption_html = f"<div class='photo-caption'>{row['caption']}</div>"
+                        
+                        meta_html = f"<div class='photo-meta'>Uploaded by {row['uploader_name']}</div>"
+                        
+                        st.markdown(caption_html + meta_html, unsafe_allow_html=True)
+                        st.markdown("</div>", unsafe_allow_html=True) # Close card
+
+                        # Delete Button (Outside card or small icon? Let's put below card for safety/clarity)
+                        if current_user_roll == row['roll_no']:
+                            if st.button("Delete Photo", key=f"del_alb_{row['id']}", type="secondary"):
+                                if delete_album_photo(row['id']):
+                                    st.success("Deleted!")
+                                    st.rerun()
+                    else:
+                         st.error("Error loading image")
+                         st.markdown("</div>", unsafe_allow_html=True)
+
+            # Pagination Controls (Bottom)
+            st.markdown("---")
+            b_prev, b_info, b_next = st.columns([1, 2, 1])
+            with b_prev:
+                if current_page > 0:
+                    if st.button("⬅️ Previous 10", key="prev_bot"):
+                        st.session_state['album_page'] -= 1
+                        st.rerun()
+            with b_next:
+                 if (current_page + 1) < total_pages:
+                    if st.button("Next 10 ➡️", key="next_bot"):
+                        st.session_state['album_page'] += 1
+                        st.rerun()
+
+        # UI: Upload Section (Moved Below)
+        st.markdown("<br>", unsafe_allow_html=True)
         if st.session_state.get('logged_in'):
             with st.expander("📤 Upload New Photo", expanded=False):
                 with st.form("upload_photo_form"):
+                    st.write("Add your own memories to the album!")
                     caption = st.text_input("Caption (Optional)", max_chars=100)
                     photo_file = st.file_uploader("Choose a Photo (Max 5MB)", type=['jpg', 'jpeg', 'png'])
                     
                     if st.form_submit_button("Upload Photo"):
                         if not photo_file:
                             st.error("Please select a file.")
-                            # Check size (5MB = 5 * 1024 * 1024 bytes = 5,242,880 bytes)
                         elif photo_file.size > 5242880:
                             st.error("File size exceeds 5MB limit. Please upload a smaller file.")
                         else:
@@ -1710,56 +1845,12 @@ else:
                             user = st.session_state['user_info']
                             if save_album_photo(user['roll_no'], user['name'], photo_bytes, caption):
                                 st.success("Photo uploaded successfully!")
+                                # Reset page to 0 to see new upload? Or stay? 
+                                # Usually better to stay or go to page 0. Let's go to page 0 to see it (since we order by created_at DESC).
+                                st.session_state['album_page'] = 0
                                 st.rerun()
         else:
             st.info("Please login to upload photos.")
-
-        # UI: Gallery Section
-        total_photos = get_total_photo_count()
-        limit = st.session_state['reunion_display_count']
-        
-        photos = get_photos_paginated(limit)
-        
-        if not photos:
-            st.info("No photos shared yet. Be the first!")
-        else:
-            st.write(f"Showing {len(photos)} of {total_photos} photos")
-            
-            # Grid Layout
-            cols = st.columns(3)
-            current_user_roll = st.session_state['user_info']['roll_no'] if st.session_state.get('logged_in') else None
-
-            for idx, row in enumerate(photos):
-                col = cols[idx % 3]
-                with col:
-                    # Render Image
-                    img = get_image_from_blob(row['photo'])
-                    if img:
-                        # Use st.image which is clickable/expandable by default
-                        st.image(img, use_container_width=True) 
-                        
-                        # Info / Actions
-                        c_caps, c_del = st.columns([0.85, 0.15])
-                        with c_caps:
-                            if row['caption']:
-                                st.caption(f"**{row['caption']}**")
-                            st.caption(f"By: {row['uploader_name']}")
-                        
-                        with c_del:
-                            # Delete Button (Only for owner)
-                            if current_user_roll == row['roll_no']:
-                                if st.button("🗑️", key=f"del_alb_{row['id']}", help="Delete"):
-                                    if delete_album_photo(row['id']):
-                                        st.rerun()
-                    else:
-                        st.error("Error loading image")
-                    st.divider()
-
-            # Load More Button
-            if len(photos) < total_photos:
-                if st.button("Load More Photos"):
-                    st.session_state['reunion_display_count'] += 10
-                    st.rerun()
 
     elif view_mode == "Reports & Downloads":
         st.header("📊 Reports & Downloads")
