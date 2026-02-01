@@ -1636,6 +1636,17 @@ else:
         if 'album_page' not in st.session_state:
             st.session_state['album_page'] = 0
 
+        # Helper to sync pagination across all widgets
+        def set_page(page_index):
+            st.session_state['album_page'] = page_index
+            st.session_state['page_select_top'] = page_index + 1
+            st.session_state['page_select_bot'] = page_index + 1
+
+        # Handle Force Reset (e.g. after upload)
+        if st.session_state.get('force_page_zero'):
+            set_page(0)
+            del st.session_state['force_page_zero']
+
         # Database Helpers for Album
         def get_photos_paginated(limit, offset):
             conn = get_db_connection()
@@ -1762,18 +1773,36 @@ else:
         else:
             # Pagination Controls (Top)
             c_prev, c_info, c_next = st.columns([1, 2, 1])
+            
+            # Callback for page selection
+            def update_page_top():
+                # Value will be "Page X"
+                # But we can just use index referencing or parse the string if needed.
+                # Actually, simpler: Use numbers 1..N and logic.
+                pass 
+            
             with c_prev:
                 if current_page > 0:
-                    if st.button("⬅️ Previous 10", key="prev_top"):
-                        st.session_state['album_page'] -= 1
-                        st.rerun()
+                    st.button("⬅️ Previous 10", key="prev_top", on_click=set_page, args=(current_page - 1,))
             with c_info:
-                st.markdown(f"<p style='text-align: center; font-weight: bold;'>Page {current_page + 1} of {total_pages}</p>", unsafe_allow_html=True)
+                # Page Selector
+                page_options = list(range(1, total_pages + 1))
+                
+                def on_page_select_top():
+                    new_val = st.session_state['page_select_top']
+                    set_page(new_val - 1)
+
+                st.selectbox(
+                    "Go to Page", 
+                    page_options, 
+                    index=current_page,
+                    key="page_select_top",
+                    on_change=on_page_select_top
+                )
+                
             with c_next:
                 if (current_page + 1) < total_pages:
-                    if st.button("Next 10 ➡️", key="next_top"):
-                        st.session_state['album_page'] += 1
-                        st.rerun()
+                    st.button("Next 10 ➡️", key="next_top", on_click=set_page, args=(current_page + 1,))
 
             st.write("") # Spacer
 
@@ -1817,14 +1846,24 @@ else:
             b_prev, b_info, b_next = st.columns([1, 2, 1])
             with b_prev:
                 if current_page > 0:
-                    if st.button("⬅️ Previous 10", key="prev_bot"):
-                        st.session_state['album_page'] -= 1
-                        st.rerun()
+                    st.button("⬅️ Previous 10", key="prev_bot", on_click=set_page, args=(current_page - 1,))
+
+            with b_info:
+                 # Page Selector Bottom
+                 def on_page_select_bot():
+                    new_val = st.session_state['page_select_bot']
+                    set_page(new_val - 1)
+
+                 st.selectbox(
+                    "Go to Page", 
+                    page_options, 
+                    index=current_page,
+                    key="page_select_bot",
+                    on_change=on_page_select_bot
+                )
             with b_next:
                  if (current_page + 1) < total_pages:
-                    if st.button("Next 10 ➡️", key="next_bot"):
-                        st.session_state['album_page'] += 1
-                        st.rerun()
+                    st.button("Next 10 ➡️", key="next_bot", on_click=set_page, args=(current_page + 1,))
 
         # UI: Upload Section (Moved Below)
         st.markdown("<br>", unsafe_allow_html=True)
@@ -1847,7 +1886,8 @@ else:
                                 st.success("Photo uploaded successfully!")
                                 # Reset page to 0 to see new upload? Or stay? 
                                 # Usually better to stay or go to page 0. Let's go to page 0 to see it (since we order by created_at DESC).
-                                st.session_state['album_page'] = 0
+                                # Use flag to safely reset state on next run
+                                st.session_state['force_page_zero'] = True
                                 st.rerun()
         else:
             st.info("Please login to upload photos.")
