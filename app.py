@@ -1830,7 +1830,7 @@ else:
             @st.dialog("Edit Photo Description")
             def edit_description_dialog(photo_id, current_desc, filename):
                 st.write(f"Filename: {filename}")
-                new_desc = st.text_input("Description", value=current_desc if current_desc else "")
+                new_desc = st.text_area("Description (List names, memories, etc.)", value=current_desc if current_desc else "", height=150)
                 if st.button("Save"):
                     if update_photo_description(photo_id, new_desc):
                         st.success("Description updated!")
