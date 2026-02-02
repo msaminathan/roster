@@ -1629,6 +1629,7 @@ else:
 
     elif view_mode == "Reunion Photo Album":
         st.header("📸 Reunion Photo Album")
+        st.info("📝 Note: Viewers can edit the description by clicking the pencil icon (✏️) on any photo card. Feel free to include names, memories, and stories!")
         st.markdown("Share your memories with the batch! Upload photos (max 5MB).")
         st.markdown("---")
 
