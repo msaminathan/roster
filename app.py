@@ -1654,14 +1654,15 @@ else:
             cursor = conn.cursor(dictionary=True)
             try:
                 # Use LIMIT and OFFSET on 'photos' table
-                # Map columns: image_data -> photo, filename -> caption, upload_date -> created_at
-                # Missing: roll_no, uploader_name
-                cursor.execute("SELECT id, image_data as photo, filename as caption, upload_date as created_at FROM photos ORDER BY upload_date DESC LIMIT %s OFFSET %s", (limit, offset))
+                # Map columns: image_data -> photo, filename, description, upload_date -> created_at
+                cursor.execute("SELECT id, image_data as photo, filename, description, upload_date as created_at FROM photos ORDER BY upload_date DESC LIMIT %s OFFSET %s", (limit, offset))
                 rows = cursor.fetchall()
                 # Add default values for missing columns to avoid UI errors
                 for row in rows:
                     if 'uploader_name' not in row: row['uploader_name'] = 'Batchmate'
                     if 'roll_no' not in row: row['roll_no'] = None
+                    # Set caption for backward compatibility if needed, but we'll use filename/description logic
+                    row['caption'] = row['description'] if row['description'] else row['filename']
                 return rows
             except: return []
             finally: 
@@ -1709,6 +1710,22 @@ else:
                 conn.commit()
                 return True
             except: return False
+            finally:
+                cursor.close()
+                conn.close()
+        
+        def update_photo_description(photo_id, description):
+            conn = get_db_connection()
+            if not conn: return False
+            cursor = conn.cursor()
+            try:
+                sql = "UPDATE photos SET description = %s WHERE id = %s"
+                cursor.execute(sql, (description, photo_id))
+                conn.commit()
+                return True
+            except Exception as e:
+                st.error(f"Error updating description: {e}")
+                return False
             finally:
                 cursor.close()
                 conn.close()
@@ -1806,40 +1823,56 @@ else:
 
             st.write("") # Spacer
 
-            # GRID DISPLAY
-            # We want rows of 2 or 3. Let's do 2 columns for "Big/Fancy" feel or 3 for efficiency. 
-            # User said "fancy", so larger images (2 cols) might be better, but 3 is standard. Let's stick to 3 but styled.
-            cols = st.columns(2) 
+            # Gallery Grid
+            cols = st.columns(2)
+            
+            # Dialog for editing description
+            @st.dialog("Edit Photo Description")
+            def edit_description_dialog(photo_id, current_desc, filename):
+                st.write(f"Filename: {filename}")
+                new_desc = st.text_input("Description", value=current_desc if current_desc else "")
+                if st.button("Save"):
+                    if update_photo_description(photo_id, new_desc):
+                        st.success("Description updated!")
+                        st.rerun()
+                    else:
+                        st.error("Failed to update.")
+
             current_user_roll = st.session_state['user_info']['roll_no'] if st.session_state.get('logged_in') else None
 
             for idx, row in enumerate(photos):
                 col = cols[idx % 2]
                 with col:
-                    st.markdown('<div class="photo-card">', unsafe_allow_html=True)
+                    # Photo Card
+                    st.markdown("""<div class="photo-card">""", unsafe_allow_html=True)
                     
-                    # Render Image
                     img = get_image_from_blob(row['photo'])
                     if img:
                         st.image(img, width="stretch")
-                        
-                        caption_html = ""
-                        if row['caption']:
-                            caption_html = f"<div class='photo-caption'>{row['caption']}</div>"
-                        
-                        meta_html = f"<div class='photo-meta'>Uploaded by {row['uploader_name']}</div>"
-                        
-                        st.markdown(caption_html + meta_html, unsafe_allow_html=True)
-                        st.markdown("</div>", unsafe_allow_html=True) # Close card
+                    
+                    # Display Description or Filename
+                    display_text = row['description'] if row['description'] else row['filename']
+                    
+                    # Layout: Caption + Edit Button
+                    c_text, c_edit_btn = st.columns([0.85, 0.15])
+                    with c_text:
+                         st.markdown(f"<div class='photo-caption'>{display_text}</div>", unsafe_allow_html=True)
+                         if 'created_at' in row and row['created_at']:
+                            st.markdown(f"<div class='photo-meta'>Uploaded by {row['uploader_name']} on {row['created_at'].strftime('%b %d, %Y')}</div>", unsafe_allow_html=True)
+                    with c_edit_btn:
+                        # Allow all viewers to edit description as requested
+                        if st.button("✏️", key=f"edit_ph_{row['id']}", help="Edit Description"):
+                                edit_description_dialog(row['id'], row['description'], row['filename'])
 
-                        # Delete Button (Outside card or small icon? Let's put below card for safety/clarity)
-                        if current_user_roll == row['roll_no']:
-                            if st.button("Delete Photo", key=f"del_alb_{row['id']}", type="secondary"):
-                                if delete_album_photo(row['id']):
-                                    st.success("Deleted!")
-                                    st.rerun()
-                    else:
-                         st.error("Error loading image")
-                         st.markdown("</div>", unsafe_allow_html=True)
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    
+                    # Delete Button - Keep ownership check (will only work if we start tracking roll_no, or if logic changes)
+                    # Currently effectively disables delete for non-tracked photos, which is safe.
+                    if current_user_roll == row['roll_no']:
+                        if st.button("Delete Photo", key=f"del_alb_{row['id']}", type="secondary"):
+                            if delete_album_photo(row['id']):
+                                st.success("Deleted!")
+                                st.rerun()
 
             # Pagination Controls (Bottom)
             st.markdown("---")
