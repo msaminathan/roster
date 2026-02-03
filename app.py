@@ -1649,14 +1649,26 @@ else:
             del st.session_state['force_page_zero']
 
         # Database Helpers for Album
-        def get_photos_paginated(limit, offset):
+        def get_photos_paginated(limit, offset, search_term=None):
             conn = get_db_connection()
             if not conn: return []
             cursor = conn.cursor(dictionary=True)
             try:
                 # Use LIMIT and OFFSET on 'photos' table
                 # Map columns: image_data -> photo, filename, description, upload_date -> created_at
-                cursor.execute("SELECT id, image_data as photo, filename, description, upload_date as created_at FROM photos ORDER BY upload_date DESC LIMIT %s OFFSET %s", (limit, offset))
+                
+                query = "SELECT id, image_data as photo, filename, description, upload_date as created_at FROM photos"
+                params = []
+                
+                if search_term:
+                    query += " WHERE (description LIKE %s OR filename LIKE %s)"
+                    search_pattern = f"%{search_term}%"
+                    params.extend([search_pattern, search_pattern])
+                
+                query += " ORDER BY upload_date DESC LIMIT %s OFFSET %s"
+                params.extend([limit, offset])
+                
+                cursor.execute(query, tuple(params))
                 rows = cursor.fetchall()
                 # Add default values for missing columns to avoid UI errors
                 for row in rows:
@@ -1665,17 +1677,26 @@ else:
                     # Set caption for backward compatibility if needed, but we'll use filename/description logic
                     row['caption'] = row['description'] if row['description'] else row['filename']
                 return rows
-            except: return []
+            except Exception as e:
+                # st.error(f"Error fetching photos: {e}")
+                return []
             finally: 
                 cursor.close()
                 conn.close()
 
-        def get_total_photo_count():
+        def get_total_photo_count(search_term=None):
             conn = get_db_connection()
             if not conn: return 0
             cursor = conn.cursor()
             try:
-                cursor.execute("SELECT COUNT(*) FROM photos")
+                query = "SELECT COUNT(*) FROM photos"
+                params = []
+                if search_term:
+                    query += " WHERE (description LIKE %s OR filename LIKE %s)"
+                    search_pattern = f"%{search_term}%"
+                    params.extend([search_pattern, search_pattern])
+                    
+                cursor.execute(query, tuple(params))
                 return cursor.fetchone()[0]
             except: return 0
             finally:
@@ -1690,8 +1711,12 @@ else:
                 # Insert into photos table
                 # caption -> filename (or generate one)
                 filename = caption if caption else f"upload_{int(time.time())}.jpg"
-                sql = "INSERT INTO photos (filename, image_data, upload_date) VALUES (%s, %s, NOW())"
-                cursor.execute(sql, (filename, photo_bytes))
+                sql = "INSERT INTO photos (filename, image_data, upload_date, description) VALUES (%s, %s, NOW(), %s)"
+                
+                # Note: uploader_name and roll_no are NOT in the schema, so we ignore them for now.
+                # using caption for description AND filename fallback.
+                
+                cursor.execute(sql, (filename, photo_bytes, caption))
                 conn.commit()
                 return True
             except Exception as e:
@@ -1766,8 +1791,27 @@ else:
         """, unsafe_allow_html=True)
 
         # UI: Gallery Section (Moved Above Upload)
+        
+        # Search Bar
+        c_search, c_note = st.columns([1, 1])
+        with c_search:
+            album_search_term = st.text_input("🔍 Search Album", placeholder="Name, description, uploader...")
+        with c_note:
+            st.info("ℹ️ Note: Not all photos have been given a description with names, places, etc.")
+
+        # Reset pagination if search changes
+        if 'last_album_search' not in st.session_state:
+            st.session_state['last_album_search'] = ""
+            
+        if album_search_term != st.session_state['last_album_search']:
+            st.session_state['album_page'] = 0
+            st.session_state['last_album_search'] = album_search_term
+            # Also reset the select boxes
+            st.session_state['page_select_top'] = 1
+            st.session_state['page_select_bot'] = 1
+
         ITEMS_PER_PAGE = 10
-        total_photos = get_total_photo_count()
+        total_photos = get_total_photo_count(album_search_term)
         
         # Calculate max pages
         import math
@@ -1784,10 +1828,13 @@ else:
         offset = current_page * ITEMS_PER_PAGE
         
         # Fetch Photos
-        photos = get_photos_paginated(ITEMS_PER_PAGE, offset)
+        photos = get_photos_paginated(ITEMS_PER_PAGE, offset, album_search_term)
         
         if not photos:
-            st.info("No photos shared yet. Be the first!")
+            if album_search_term:
+                st.warning(f"No photos found matching '{album_search_term}'.")
+            else:
+                st.info("No photos shared yet. Be the first!")
         else:
             # Pagination Controls (Top)
             c_prev, c_info, c_next = st.columns([1, 2, 1])
