@@ -692,11 +692,65 @@ else:
 
     if view_mode == "Grid View":
         st.info("Note: You can edit only your own details by clicking the edit icon (✏️) on your card.")
+        
+        # --- Pagination Logic ---
+        ITEMS_PER_PAGE = 10
+        if 'grid_page' not in st.session_state:
+            st.session_state['grid_page'] = 0
+
+        # Calculate pages
+        total_items = len(filtered_df)
+        import math
+        total_pages = math.ceil(total_items / ITEMS_PER_PAGE)
+        if total_pages == 0: total_pages = 1
+
+        # Adjust current page if out of bounds (e.g. after filtering)
+        if st.session_state['grid_page'] >= total_pages:
+            st.session_state['grid_page'] = total_pages - 1
+        if st.session_state['grid_page'] < 0:
+            st.session_state['grid_page'] = 0
+
+        current_page = st.session_state['grid_page']
+
+        # Helper to set page
+        def set_grid_page(page_index):
+            st.session_state['grid_page'] = page_index
+            # Sync both dropdowns
+            st.session_state['grid_page_select_top'] = page_index + 1
+            st.session_state['grid_page_select_bot'] = page_index + 1
+
+        # Pagination Controls (Top)
+        c_prev, c_page, c_next = st.columns([1, 2, 1])
+        
+        with c_prev:
+            if current_page > 0:
+                st.button("⬅️ Previous 10", key="grid_prev_top", on_click=set_grid_page, args=(current_page - 1,))
+        
+        with c_page:
+            page_options = list(range(1, total_pages + 1))
+            st.selectbox(
+                "Go to Page",
+                page_options,
+                index=current_page,
+                key="grid_page_select_top",
+                on_change=lambda: set_grid_page(st.session_state['grid_page_select_top'] - 1)
+            )
+
+        with c_next:
+            if current_page < total_pages - 1:
+                st.button("Next 10 ➡️", key="grid_next_top", on_click=set_grid_page, args=(current_page + 1,))
+
+        # Slice Data
+        start_idx = current_page * ITEMS_PER_PAGE
+        end_idx = start_idx + ITEMS_PER_PAGE
+        sliced_df = filtered_df.iloc[start_idx:end_idx]
+
         # Grid Layout
         cols = st.columns(3) # 3 columns grid
         
-        for idx, row in filtered_df.iterrows():
-            col = cols[idx % 3]
+        # Use enumerate to ensure visual grid flows correctly (0,1,2,0,1,2...) locally
+        for i, (idx, row) in enumerate(sliced_df.iterrows()):
+            col = cols[i % 3]
             
             with col:
                 with st.container(border=True):
@@ -740,6 +794,27 @@ else:
                             st.markdown(f"📧 [{row['email']}](mailto:{row['email']})")
                         if row['phone']:
                             st.text(f"📞 {row['phone']}")
+
+        # Pagination Controls (Bottom)
+        st.markdown("---")
+        b_prev, b_page, b_next = st.columns([1, 2, 1])
+        
+        with b_prev:
+            if current_page > 0:
+                st.button("⬅️ Previous 10", key="grid_prev_bot", on_click=set_grid_page, args=(current_page - 1,))
+        
+        with b_page:
+            st.selectbox(
+                "Go to Page",
+                page_options,
+                index=current_page,
+                key="grid_page_select_bot",
+                on_change=lambda: set_grid_page(st.session_state['grid_page_select_bot'] - 1)
+            )
+
+        with b_next:
+            if current_page < total_pages - 1:
+                st.button("Next 10 ➡️", key="grid_next_bot", on_click=set_grid_page, args=(current_page + 1,))
 
     elif view_mode == "List View":
         st.info("Note: You can edit only your own details by clicking the edit icon (✏️) in your row.")
