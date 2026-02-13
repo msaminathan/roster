@@ -728,13 +728,19 @@ else:
         
         with c_page:
             page_options = list(range(1, total_pages + 1))
-            st.selectbox(
-                "Go to Page",
-                page_options,
-                index=current_page,
-                key="grid_page_select_top",
-                on_change=lambda: set_grid_page(st.session_state['grid_page_select_top'] - 1)
-            )
+            # Fix for potential warning in Grid View too
+            idx_grid_top = current_page if "grid_page_select_top" not in st.session_state else None
+            
+            grid_kwargs_top = {
+                "label": "Go to Page",
+                "options": page_options,
+                "key": "grid_page_select_top",
+                "on_change": lambda: set_grid_page(st.session_state['grid_page_select_top'] - 1)
+            }
+            if idx_grid_top is not None:
+                 grid_kwargs_top["index"] = idx_grid_top
+
+            st.selectbox(**grid_kwargs_top)
 
         with c_next:
             if current_page < total_pages - 1:
@@ -804,13 +810,19 @@ else:
                 st.button("⬅️ Previous 10", key="grid_prev_bot", on_click=set_grid_page, args=(current_page - 1,))
         
         with b_page:
-            st.selectbox(
-                "Go to Page",
-                page_options,
-                index=current_page,
-                key="grid_page_select_bot",
-                on_change=lambda: set_grid_page(st.session_state['grid_page_select_bot'] - 1)
-            )
+            # Fix for bottom selector in Grid View
+            idx_grid_bot = current_page if "grid_page_select_bot" not in st.session_state else None
+            
+            grid_kwargs_bot = {
+                "label": "Go to Page",
+                "options": page_options,
+                "key": "grid_page_select_bot",
+                "on_change": lambda: set_grid_page(st.session_state['grid_page_select_bot'] - 1)
+            }
+            if idx_grid_bot is not None:
+                 grid_kwargs_bot["index"] = idx_grid_bot
+
+            st.selectbox(**grid_kwargs_bot)
 
         with b_next:
             if current_page < total_pages - 1:
@@ -1932,13 +1944,22 @@ else:
                     new_val = st.session_state['page_select_top']
                     set_page(new_val - 1)
 
-                st.selectbox(
-                    "Go to Page", 
-                    page_options, 
-                    index=current_page,
-                    key="page_select_top",
-                    on_change=on_page_select_top
-                )
+                # Fix for Warning: The widget with key "page_select_top" was created with a default value but also had its value set via the Session State API.
+                # Only set index if the key is NOT in session state yet.
+                idx_arg = current_page if "page_select_top" not in st.session_state else None
+                
+                # If idx_arg is None, we must NOT pass it to st.selectbox at all to avoid overriding session state
+                # So we use kwargs unpacking
+                select_kwargs = {
+                    "label": "Go to Page",
+                    "options": page_options,
+                    "key": "page_select_top",
+                    "on_change": on_page_select_top
+                }
+                if idx_arg is not None:
+                     select_kwargs["index"] = idx_arg
+
+                st.selectbox(**select_kwargs)
                 
             with c_next:
                 if (current_page + 1) < total_pages:
@@ -2010,13 +2031,19 @@ else:
                     new_val = st.session_state['page_select_bot']
                     set_page(new_val - 1)
 
-                 st.selectbox(
-                    "Go to Page", 
-                    page_options, 
-                    index=current_page,
-                    key="page_select_bot",
-                    on_change=on_page_select_bot
-                )
+                 # Apply same fix for bottom selector
+                 idx_arg_bot = current_page if "page_select_bot" not in st.session_state else None
+                 
+                 select_kwargs_bot = {
+                    "label": "Go to Page",
+                    "options": page_options,
+                    "key": "page_select_bot",
+                    "on_change": on_page_select_bot
+                 }
+                 if idx_arg_bot is not None:
+                     select_kwargs_bot["index"] = idx_arg_bot
+
+                 st.selectbox(**select_kwargs_bot)
             with b_next:
                  if (current_page + 1) < total_pages:
                     st.button("Next 10 ➡️", key="next_bot", on_click=set_page, args=(current_page + 1,))
