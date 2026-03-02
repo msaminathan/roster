@@ -918,9 +918,65 @@ else:
     elif view_mode == "Table (with Icons)":
         st.subheader("Tabular View (with Photos)")
         st.info("Note: You can edit only your own row, marked by the edit symbol (✏️). Please select the checkbox for your row to edit.")
+
+        # --- Pagination Logic ---
+        ITEMS_PER_PAGE_ICONS = 15
+        if 'icons_page' not in st.session_state:
+            st.session_state['icons_page'] = 0
+
+        # Calculate pages
+        total_items_icons = len(filtered_df)
+        import math
+        total_pages_icons = math.ceil(total_items_icons / ITEMS_PER_PAGE_ICONS)
+        if total_pages_icons == 0: total_pages_icons = 1
+
+        # Adjust current page if out of bounds (e.g. after filtering)
+        if st.session_state['icons_page'] >= total_pages_icons:
+            st.session_state['icons_page'] = total_pages_icons - 1
+        if st.session_state['icons_page'] < 0:
+            st.session_state['icons_page'] = 0
+
+        current_page_icons = st.session_state['icons_page']
+
+        # Helper to set page
+        def set_icons_page(page_index):
+            st.session_state['icons_page'] = page_index
+            st.session_state['icons_page_select_top'] = page_index + 1
+            st.session_state['icons_page_select_bot'] = page_index + 1
+
+        # Pagination Controls (Top)
+        c_prev, c_page, c_next = st.columns([1, 2, 1])
+        
+        with c_prev:
+            if current_page_icons > 0:
+                st.button("⬅️ Previous 15", key="icons_prev_top", on_click=set_icons_page, args=(current_page_icons - 1,))
+        
+        with c_page:
+            page_options_icons = list(range(1, total_pages_icons + 1))
+            idx_icons_top = current_page_icons if "icons_page_select_top" not in st.session_state else None
+            
+            icons_kwargs_top = {
+                "label": "Go to Page",
+                "options": page_options_icons,
+                "key": "icons_page_select_top",
+                "on_change": lambda: set_icons_page(st.session_state['icons_page_select_top'] - 1)
+            }
+            if idx_icons_top is not None:
+                 icons_kwargs_top["index"] = idx_icons_top
+
+            st.selectbox(**icons_kwargs_top)
+
+        with c_next:
+            if current_page_icons < total_pages_icons - 1:
+                st.button("Next 15 ➡️", key="icons_next_top", on_click=set_icons_page, args=(current_page_icons + 1,))
+
+        # Slice Data
+        start_idx_icons = current_page_icons * ITEMS_PER_PAGE_ICONS
+        end_idx_icons = start_idx_icons + ITEMS_PER_PAGE_ICONS
+        sliced_df_icons = filtered_df.iloc[start_idx_icons:end_idx_icons]
         
         # Prepare data with base64 images
-        df_display = filtered_df.copy()
+        df_display = sliced_df_icons.copy()
         
         def blob_to_uri(blob):
             if not blob: return None
@@ -967,8 +1023,34 @@ else:
             hide_index=True,
             on_select="rerun",
             selection_mode="single-row",
-            key=f"icon_df_{st.session_state['table_key']}"
+            key=f"icon_df_{st.session_state['table_key']}_{current_page_icons}"
         )
+
+        # Pagination Controls (Bottom)
+        st.markdown("---")
+        b_prev, b_page, b_next = st.columns([1, 2, 1])
+        
+        with b_prev:
+            if current_page_icons > 0:
+                st.button("⬅️ Previous 15", key="icons_prev_bot", on_click=set_icons_page, args=(current_page_icons - 1,))
+        
+        with b_page:
+            idx_icons_bot = current_page_icons if "icons_page_select_bot" not in st.session_state else None
+            
+            icons_kwargs_bot = {
+                "label": "Go to Page",
+                "options": page_options_icons,
+                "key": "icons_page_select_bot",
+                "on_change": lambda: set_icons_page(st.session_state['icons_page_select_bot'] - 1)
+            }
+            if idx_icons_bot is not None:
+                 icons_kwargs_bot["index"] = idx_icons_bot
+
+            st.selectbox(**icons_kwargs_bot)
+
+        with b_next:
+            if current_page_icons < total_pages_icons - 1:
+                st.button("Next 15 ➡️", key="icons_next_bot", on_click=set_icons_page, args=(current_page_icons + 1,))
 
         if len(event_icons.selection.rows) > 0:
             selected_row_index_icons = event_icons.selection.rows[0]
