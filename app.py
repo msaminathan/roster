@@ -830,8 +830,65 @@ else:
 
     elif view_mode == "List View":
         st.info("Note: You can edit only your own details by clicking the edit icon (✏️) in your row.")
+        
+        # --- Pagination Logic ---
+        ITEMS_PER_PAGE_LIST = 5
+        if 'list_page' not in st.session_state:
+            st.session_state['list_page'] = 0
+
+        # Calculate pages
+        total_items_list = len(filtered_df)
+        import math
+        total_pages_list = math.ceil(total_items_list / ITEMS_PER_PAGE_LIST)
+        if total_pages_list == 0: total_pages_list = 1
+
+        # Adjust current page if out of bounds (e.g. after filtering)
+        if st.session_state['list_page'] >= total_pages_list:
+            st.session_state['list_page'] = total_pages_list - 1
+        if st.session_state['list_page'] < 0:
+            st.session_state['list_page'] = 0
+
+        current_page_list = st.session_state['list_page']
+
+        # Helper to set page
+        def set_list_page(page_index):
+            st.session_state['list_page'] = page_index
+            st.session_state['list_page_select_top'] = page_index + 1
+            st.session_state['list_page_select_bot'] = page_index + 1
+
+        # Pagination Controls (Top)
+        c_prev, c_page, c_next = st.columns([1, 2, 1])
+        
+        with c_prev:
+            if current_page_list > 0:
+                st.button("⬅️ Previous 5", key="list_prev_top", on_click=set_list_page, args=(current_page_list - 1,))
+        
+        with c_page:
+            page_options_list = list(range(1, total_pages_list + 1))
+            idx_list_top = current_page_list if "list_page_select_top" not in st.session_state else None
+            
+            list_kwargs_top = {
+                "label": "Go to Page",
+                "options": page_options_list,
+                "key": "list_page_select_top",
+                "on_change": lambda: set_list_page(st.session_state['list_page_select_top'] - 1)
+            }
+            if idx_list_top is not None:
+                 list_kwargs_top["index"] = idx_list_top
+
+            st.selectbox(**list_kwargs_top)
+
+        with c_next:
+            if current_page_list < total_pages_list - 1:
+                st.button("Next 5 ➡️", key="list_next_top", on_click=set_list_page, args=(current_page_list + 1,))
+
+        # Slice Data
+        start_idx_list = current_page_list * ITEMS_PER_PAGE_LIST
+        end_idx_list = start_idx_list + ITEMS_PER_PAGE_LIST
+        sliced_df_list = filtered_df.iloc[start_idx_list:end_idx_list]
+
         # List View Layout
-        for idx, row in filtered_df.iterrows():
+        for idx, row in sliced_df_list.iterrows():
             with st.container(border=True):
                 # Columns: 1966 Photo (small), Current Photo (small), Details, Edit
                 c_img, c_info, c_edit = st.columns([2, 5, 1])
@@ -859,6 +916,32 @@ else:
                     if st.session_state['user_info']['roll_no'] == row['roll_no']:
                         if st.button("✏️", key=f"edit_list_{row['id']}"):
                             edit_dialog(row)
+
+        # Pagination Controls (Bottom)
+        st.markdown("---")
+        b_prev, b_page, b_next = st.columns([1, 2, 1])
+        
+        with b_prev:
+            if current_page_list > 0:
+                st.button("⬅️ Previous 5", key="list_prev_bot", on_click=set_list_page, args=(current_page_list - 1,))
+        
+        with b_page:
+            idx_list_bot = current_page_list if "list_page_select_bot" not in st.session_state else None
+            
+            list_kwargs_bot = {
+                "label": "Go to Page",
+                "options": page_options_list,
+                "key": "list_page_select_bot",
+                "on_change": lambda: set_list_page(st.session_state['list_page_select_bot'] - 1)
+            }
+            if idx_list_bot is not None:
+                 list_kwargs_bot["index"] = idx_list_bot
+
+            st.selectbox(**list_kwargs_bot)
+
+        with b_next:
+            if current_page_list < total_pages_list - 1:
+                st.button("Next 5 ➡️", key="list_next_bot", on_click=set_list_page, args=(current_page_list + 1,))
 
     elif view_mode == "Table (Text)":
         st.subheader("Tabular View (Text Only)")
